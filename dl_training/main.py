@@ -49,7 +49,6 @@ if __name__ == "__main__":
     parser.add_argument("--num_cpu_workers", type=int, default=3,
                         help="Number of workers assigned to do the preprocessing step (used by DataLoader of Pytorch)")
     parser.add_argument("--sampler", choices=["random", "weighted_random", "sequential"], required=True)
-    parser.add_argument("--residualize", type=str, choices=["linear", "combat"])
     parser.add_argument("--data_augmentation", type=str, nargs="+", default=None,
                         help="Data Augmentation for contrastive models")
 

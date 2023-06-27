@@ -188,7 +188,7 @@ class BaseTrainer:
             _manager_cls = ClinicalDataManager
 
         kwargs_manager = dict(labels=labels, sampler=args.sampler, batch_size=args.batch_size,
-                              residualize=args.residualize, mask=mask, number_of_folds=args.nb_folds,
+                              mask=mask, number_of_folds=args.nb_folds,
                               N_train_max=args.N_train_max, device=('cuda' if args.cuda else 'cpu'),
                               num_workers=args.num_cpu_workers, model=args.model, pin_memory=True)
 
