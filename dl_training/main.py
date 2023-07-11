@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     # Important: what model do we use
     parser.add_argument("--net", type=str, help="Network to use")
-    parser.add_argument("--model", type=str, help="Model to use", choices=["base", "SimCLR", "SupConv", "y-aware"],
+    parser.add_argument("--model", type=str, help="Model to use", choices=["base", "SimCLR", "SupCon", "y-aware"],
                         default="base")
 
     # Depends on available CPU/GPU memory
