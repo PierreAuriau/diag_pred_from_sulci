@@ -13,7 +13,8 @@ from skimage import transform as sk_tf
 import torch
 import torch.nn.functional as F
 
-logger = logging.getLogger("")
+logger = logging.getLogger()
+
 
 class Scaler(object):
     def __init__(self, scale=1):
