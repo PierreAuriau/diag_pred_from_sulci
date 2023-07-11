@@ -42,7 +42,7 @@ class ContrastiveBase(Base):
         scaler = kwargs.get("gradscaler")
         self.model.train()
         nb_batch = len(loader)
-        pbar = tqdm(total=nb_batch, desc="Mini-Batch ({fold},{epoch})")
+        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({fold},{epoch})")
 
         values = {}
         losses = []
@@ -122,7 +122,7 @@ class ContrastiveBase(Base):
                 inputs = dataitem.inputs
                 labels = dataitem.labels.to(self.device) if dataitem.labels is not None else None
 
-                (z_i, z_j) = self.get_output_pairs(inputs, **kwargs)
+                (z_i, z_j) = self.get_output_pairs(inputs)
                 if with_visuals:
                     visuals.append(self.model.get_current_visuals())
 
