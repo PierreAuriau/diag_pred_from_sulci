@@ -8,6 +8,8 @@ from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
 from typing import Callable, List, Type, Sequence, Dict
 
+logger = logging.getLogger()
+
 
 class ClinicalBase(ABC, Dataset):
     """
@@ -62,7 +64,6 @@ class ClinicalBase(ABC, Dataset):
         self.split = split
         self.target_name = target
         self.transforms = transforms
-        self.logger = logging.getLogger("")
 
         if self.split == "val":
             self.split = "validation"
@@ -210,10 +211,10 @@ class ClinicalBase(ABC, Dataset):
         """
         metadata = ["age", "sex", "tiv"] + [k for k in df.keys() if "GM_Vol" in k or "WM_Vol" in k or "CSF_Vol" in k]
         if len(metadata) != 290:
-            self.logger.warning(f"Missing meta-data values ({len(metadata)} != 290)")
+            logger.warning(f"Missing meta-data values ({len(metadata)} != 290)")
         assert set(metadata) <= set(df.keys()), "Missing meta-data columns: {}".format(set(metadata) - set(df.keys))
         if df[metadata].isna().sum().sum() > 0:
-            self.logger.warning("NaN values found in meta-data")
+            logger.warning("NaN values found in meta-data")
         return df[metadata]
 
     def target_transform_fn(self, target):
