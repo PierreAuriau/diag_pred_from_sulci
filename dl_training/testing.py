@@ -1,24 +1,32 @@
 import os
 import pickle
+import nibabel
 from logs.utils import get_chk_name
 from dl_training.core import Base
+from contrastive_learning.contrastive_core import ContrastiveBase
 from dl_training.training import BaseTrainer
 from preprocessing.transforms import *
+
+logger = logging.getLogger()
 
 
 class BaseTester():
 
     def __init__(self, args):
         self.args = args
-        self.net = BaseTrainer.build_network(args.net, args.pb, in_channels=1)
-        self.manager = BaseTrainer.build_data_manager(args)
-        self.loss = BaseTrainer.build_loss(args)
-        self.logger = logging.getLogger("SMLvsDL")
-        self.metrics = BaseTrainer.build_metrics(args.pb)
+        self.net = BaseTrainer.build_network(args.net, args.model, num_classes=1, in_channels=1)
+        self.manager = BaseTrainer.build_data_manager(args.model, args.pb, args.preproc, args.root, args.N_train_max,
+                                                      sampler=args.sampler, batch_size=args.batch_size,
+                                                      number_of_folds=args.nb_folds, data_augmentation=args.data_augmentation,
+                                                      device=('cuda' if args.cuda else 'cpu'),
+                                                      num_workers=args.num_cpu_workers,
+                                                      pin_memory=True)
+        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
+        self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
         self.kwargs_test = dict()
 
         if self.args.pretrained_path and self.manager.number_of_folds > 1:
-            self.logger.warning('Several folds found while a unique pretrained path is set!')
+            logger.warning('Several folds found while a unique pretrained path is set!')
 
     def run(self):
         epochs_tested = self.get_epochs_to_test()
@@ -27,13 +35,17 @@ class BaseTester():
             for epoch in epochs_tested[fold]:
                 pretrained_path = self.args.pretrained_path or \
                                   os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, fold, epoch))
-                self.logger.debug(f"Pretrained path : {pretrained_path}")
+                logger.debug(f"Pretrained path : {pretrained_path}")
                 outfile = self.args.outfile_name or ("Test_" + self.args.exp_name)
                 exp_name = outfile + "_fold{}_epoch{}".format(fold, epoch)
-                model = Base(model=self.net, loss=self.loss,
-                             metrics=self.metrics,
-                             pretrained=pretrained_path,
-                             use_cuda=self.args.cuda)
+                if self.args.model in ["SimCLR", "SupCon", "y-aware"]:
+                    model_cls = ContrastiveBase
+                else:
+                    model_cls = Base
+                model = model_cls(model=self.net, loss=self.loss,
+                                  metrics=self.metrics,
+                                  pretrained=pretrained_path,
+                                  use_cuda=self.args.cuda)
                 model.testing(self.manager.get_dataloader(test=True, fold_index=fold).test,
                               saving_dir=self.args.checkpoint_dir, exp_name=exp_name, **self.kwargs_test)
     
@@ -62,26 +74,19 @@ class OpenBHBTester(BaseTester):
         folds_to_test = self.get_folds_to_test()
         for fold in folds_to_test:
             tests = ["", "Intra_"]
-            (residualizer, Zres) = (None, None)
-            if self.manager.residualize is not None:
-                (residualizer, Zres) = self.manager.fit_residualizer(["test", "test_intra", "train"], fold)
-                if self.manager.residualize == "combat":
-                    tests = ["Intra_"]
             for epoch in epochs_tested[fold]:
                 pretrained_path = self.args.pretrained_path or \
                                   os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, fold, epoch))
-                self.logger.debug(f"Pretrained path : {pretrained_path}")
+                logger.debug(f"Pretrained path : {pretrained_path}")
                 for t in tests:
                     if self.args.outfile_name is None:
                         outfile = "%s%s" % (t, self.args.exp_name)
                     else:
                         outfile = "%s%s" % (t, self.args.outfile_name)
                     exp_name = outfile + "_fold{}_epoch{}".format(fold, epoch)
-                    loader = self.manager.get_dataloader(test=(t==""),
-                                                         test_intra=(t!=""),
-                                                         fold_index=fold,
-                                                         residualizer=residualizer,
-                                                         Zres=Zres)
+                    loader = self.manager.get_dataloader(test=(t == ""),
+                                                         test_intra=(t != ""),
+                                                         fold_index=fold)
                     model = Base(model=self.net, loss=self.loss,
                                  metrics=self.metrics,
                                  pretrained=pretrained_path,
@@ -108,8 +113,9 @@ class EnsemblingTester(BaseTester):
                                  metrics=self.metrics,
                                  pretrained=pretrained_path,
                                  use_cuda=self.args.cuda)
-                    y, y_true,_,_,_ = model.test(self.manager.get_dataloader(test=True).test)
+                    y, y_true, _, _, _ = model.test(self.manager.get_dataloader(test=True).test)
                     Y.append(y)
                     Y_true.append(y_true)
                 with open(os.path.join(self.args.checkpoint_dir, exp_name), 'wb') as f:
                     pickle.dump({"y": np.array(Y).swapaxes(0,1), "y_true": np.array(Y_true).swapaxes(0,1)}, f)
+
