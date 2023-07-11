@@ -23,7 +23,7 @@ from sklearn.metrics import roc_auc_score, balanced_accuracy_score, confusion_ma
 from scipy.special import expit
 
 # Global parameters
-logger = logging.getLogger("SMLvsDL")
+logger = logging.getLogger()
 
 def get_confusion_matrix(y_pred, y):
     y_pred = y_pred.data.max(dim=1)[1]
