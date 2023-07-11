@@ -15,7 +15,7 @@ Code: https://github.com/fepegar/torchio
 # Import
 import numpy as np
 from scipy.spatial.transform import Rotation
-from scipy.ndimage import map_coordinates
+from scipy.ndimage import map_coordinates, rotate
 from .transform import compose
 from .transform import gaussian_random_field
 from .transform import affine_flow
@@ -71,13 +71,23 @@ def affine(arr, rotation=10, translation=10, zoom=0.2, order=3, dist="uniform"):
     return transformed.reshape(shape)
 
 
-def cutout(arr, patch_size=None, value=0, random_size=False, inplace=False, localization=None):
+def rotation(arr, angles=5, axes=((0, 1), (0, 2), (1, 2)), order=0, dist="uniform"):
+    angles = interval(angles)
+    random_rotations = random_generator(angles, arr.ndim, dist=dist)
+    rot_arr = np.copy(arr)
+    for i, ax in enumerate(axes):
+        rot_arr = rotate(rot_arr, axes=ax, angle=random_rotations[i], order=order,
+                         reshape=False, mode="constant", cval=0)
+    return rot_arr
+
+
+def cutout(arr, patch_size, value=0, random_size=False, inplace=False, localization=None, min_size=None):
     """Apply a cutout on the images
     cf. Improved Regularization of Convolutional Neural Networks with Cutout, arXiv, 2017
     We assume that the square to be cut is inside the image.
     """
     img_shape = np.array(arr.shape)
-    if type(patch_size) == int:
+    if isinstance(patch_size, int):
         size = [patch_size for _ in range(len(img_shape))]
     else:
         size = np.copy(patch_size)
@@ -87,7 +97,9 @@ def cutout(arr, patch_size=None, value=0, random_size=False, inplace=False, loca
         if size[ndim] > img_shape[ndim] or size[ndim] < 0:
             size[ndim] = img_shape[ndim]
         if random_size:
-            size[ndim] = np.random.randint(0, size[ndim])
+            if min_size is None:
+                min_size = [0 for _ in range(len(img_shape))]
+            size[ndim] = np.random.randint(min_size[ndim], size[ndim])
         if localization is not None:
             delta_before = max(localization[ndim] - size[ndim]//2, 0)
         else:
@@ -100,6 +112,47 @@ def cutout(arr, patch_size=None, value=0, random_size=False, inplace=False, loca
         arr_cut = np.copy(arr)
         arr_cut[tuple(indexes)] = value
         return arr_cut
+
+
+def cutout_with_threshold(arr, patch_size, threshold=None, **kwargs):
+    if threshold is not None:
+        nb_nonzero_voxels = np.count_nonzero(arr)
+        nb_of_attempt = 10
+        for i in range(nb_of_attempt):
+            arr_cut = cutout(arr, patch_size)
+            rate_of_removed_voxels = 1 - np.count_nonzero(arr_cut) / nb_nonzero_voxels
+            if rate_of_removed_voxels > threshold:
+                break
+            if i == nb_of_attempt-1:
+                raise ValueError(f"Cutout : the patch size {patch_size} is too small for the threshold {threshold}")
+        return arr_cut
+    else:
+        return cutout(arr, patch_size, **kwargs)
+
+
+def random_cutout(arr, patch_size_ratio, min_size_ratio=None, on_data=False, max_dist=None):
+    # FIXME : remove condition of localization when on_data=True ?
+    img_shape = np.array(arr.shape)
+    patch_size = np.ceil(img_shape * patch_size_ratio).astype(int)
+    if min_size_ratio is None:
+        min_patch_size = np.zeros(len(img_shape))
+    else:
+        min_patch_size = np.ceil(img_shape * min_size_ratio).astype(int)
+    if on_data:
+        nonzero_voxels = np.nonzero(arr)
+        index = np.random.randint(0, len(nonzero_voxels[0]))
+        localization = np.array([nonzero_voxels[i][index] for i in range(len(nonzero_voxels))])
+        while np.any(localization > (img_shape - patch_size//2)) or np.any(localization < patch_size//2):
+            index = np.random.randint(0, len(nonzero_voxels[0]))
+            localization = [nonzero_voxels[i][index] for i in range(len(nonzero_voxels))]
+        arr_cut = cutout(arr, patch_size, localization=localization, random_size=True, min_size=min_patch_size)
+    elif max_dist is not None:
+        center = img_shape // 2
+        localization = [np.random.randint(center[d] - max_dist[d], center[d] + max_dist[d]) for d in img_shape]
+        arr_cut = cutout(arr, patch_size, random_size=True, min_size=min_patch_size, localization=localization)
+    else:
+        arr_cut = cutout(arr, patch_size, random_size=True, min_size=min_patch_size)
+    return arr_cut
 
 
 def flip(arr, axis=None):
