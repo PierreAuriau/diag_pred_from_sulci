@@ -132,7 +132,7 @@ class DenseNet(nn.Module):
                                     num_output_features=num_features // 2)
                 self.features.add_module('transition%d' % (i + 1), trans)
                 num_features = num_features // 2
-            if out_block == 'block%i'%(i+1):
+            if out_block == 'block%i' % (i+1):
                 break
 
         self.num_features = num_features
@@ -145,6 +145,8 @@ class DenseNet(nn.Module):
         elif out_block == 'simCLR':
             self.hidden_representation = nn.Linear(num_features, 512)
             self.head_projection = nn.Linear(512, 128)
+        elif out_block == 'features':
+            pass
         else:
             raise NotImplementedError()
 
@@ -173,6 +175,11 @@ class DenseNet(nn.Module):
             out = self.hidden_representation(out)
             out = F.relu(out, inplace=True)
             out = self.head_projection(out)
+        elif self.out_block == 'features':
+            out = F.relu(features, inplace=True)
+            out = F.adaptive_avg_pool3d(out, 1)
+            out = torch.flatten(out, 1)
+            return out
         else:
             raise NotImplementedError()
 
