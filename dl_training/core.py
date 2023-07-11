@@ -201,9 +201,9 @@ class Base(object):
                 fold_index=fold)
             min_loss, best_model, best_epoch = None, None, None
             for epoch in range(nb_epochs):
-                y_pred, y_true, loss, values = self.train(loader.train, fold, epoch, **kwargs_train)
+                loss, values = self.train(loader.train, fold, epoch, **kwargs_train)
 
-                train_history.log((fold, epoch), loss=loss, y_pred=y_pred, y_true=y_true, **values)
+                train_history.log((fold, epoch), loss=loss, **values)
                 train_history.summary()
                 if scheduler is not None:
                     scheduler.step()
@@ -322,8 +322,10 @@ class Base(object):
             if name not in values:
                 values[name] = 0
             values[name] = float(metric(torch.tensor(y_pred), torch.tensor(y_true)))
+        values["y_pred"] = y_pred
+        values["y_true"] = y_true
         pbar.close()
-        return y_pred, y_true, loss, values
+        return loss, values
 
     def testing(self, loader: DataLoader, saving_dir=None, exp_name=None, **kwargs):
         """ Evaluate the model.
@@ -433,3 +435,46 @@ class Base(object):
             pbar.close()
 
         return y, y_true, X, loss, values
+
+    def get_embeddings(self, loader):
+        """ Get the outputs of the model.
+
+        Parameter
+        ---------
+        loader: a pytorch Dataset
+            the data loader.
+        Returns
+        -------
+        z: array-like
+            the embeddings
+        labels: array-like
+            the true data
+        X: array_like
+            the input data
+        """
+
+        self.model.eval()
+        nb_batch = len(loader)
+        pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+
+        with torch.no_grad():
+            z, labels, X = [], [], []
+
+            for dataitem in loader:
+                pbar.update()
+                inputs = dataitem.inputs
+                if isinstance(inputs, torch.Tensor):
+                    inputs = inputs.to(self.device)
+                for item in (dataitem.outputs, dataitem.labels):
+                    if item is not None:
+                        labels.extend(item.cpu().detach().numpy())
+                outputs = self.model(inputs)
+                z.extend(outputs.cpu().detach().numpy())
+
+                if isinstance(inputs, torch.Tensor):
+                    X.extend(inputs.cpu().detach().numpy())
+
+            pbar.close()
+
+        return z, labels, X
+
