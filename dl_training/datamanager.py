@@ -16,6 +16,7 @@ from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
 from preprocessing.transforms import Padding, Crop, Normalize, Binarize
 from augmentation.da_module import DA_Module
 
+logger = logging.getLogger()
 SetItem = namedtuple("SetItem", ["test", "train", "validation"], defaults=(None,) * 3)
 DataItem = namedtuple("DataItem", ["inputs", "outputs", "labels"])
 
@@ -25,9 +26,8 @@ class OpenBHBDataManager:
     def __init__(self, root: str, preproc: str, labels: List[str] = None, sampler: str = "random",
                  batch_size: int = 1, number_of_folds: int = None, N_train_max: int = None,
                  mask=None, model: str = None, device: str = "cuda", **dataloader_kwargs):
-        assert model in [None, "base", "SimCLR", "SupConv", "y-aware"], f"Unknown model {model}"
+        assert model in [None, "base", "SimCLR", "SupCon", "y-aware"], f"Unknown model {model}"
         assert sampler in ["random", "sequential"], "Unknown sampler '%s'" % sampler
-        self.logger = logging.getLogger("SMLvsDL")
         self.dataset = dict()
         self.labels = labels or []
         self.mask = mask
@@ -37,8 +37,8 @@ class OpenBHBDataManager:
         input_transforms = self.get_input_transforms(preproc=preproc, model=model)
 
         if N_train_max is not None:
-            self.logger.info("Automatic stratification on Age+Sex+Site")
-            if model in ["SimCLR", "SupConv", "y-aware"]:
+            logger.info("Automatic stratification on Age+Sex+Site")
+            if model in ["SimCLR", "SupCon", "y-aware"]:
                 dataset_cls = ContrastiveSubOpenBHB
             else:
                 dataset_cls = SubOpenBHB
@@ -54,7 +54,7 @@ class OpenBHBDataManager:
             self.number_of_folds = number_of_folds
         else:
             kwargs_dataset = dict()
-            if model in ["SimCLR", "SupConv", "y-aware"]:
+            if model in ["SimCLR", "SupCon", "y-aware"]:
                 dataset_cls = ContrastiveOpenBHB
             else:
                 dataset_cls = OpenBHB
@@ -65,7 +65,7 @@ class OpenBHBDataManager:
                                                       transforms=input_transforms, target=labels,
                                                       **kwargs_dataset)]
             self.number_of_folds = 1
-        if model in ["SimCLR", "SupConv", "y-aware"]:
+        if model in ["SimCLR", "SupCon", "y-aware"]:
             dataset_cls = ContrastiveOpenBHB
         else:
             dataset_cls = OpenBHB
@@ -111,8 +111,8 @@ class OpenBHBDataManager:
             dataset = self.dataset[t] if t != "validation" else self.dataset[t][fold_index]
             drop_last = True if len(dataset) % self.batch_size == 1 else False
             if drop_last and t != "validation":
-                self.logger.warning(f"The last subject will not be tested ! "
-                                    f"Change the batch size ({self.batch_size}) to test on all subject ({len(dataset)})")
+                logger.warning(f"The last subject will not be tested ! "
+                               f"Change the batch size ({self.batch_size}) to test on all subject ({len(dataset)})")
             test_loaders[t] = DataLoader(dataset, batch_size=self.batch_size,
                                          collate_fn=OpenBHBDataManager.collate_fn, drop_last=drop_last,
                                          **self.dataloader_kwargs)
@@ -145,9 +145,10 @@ class OpenBHBDataManager:
                 [Padding([1, 128, 160, 128], mode='constant'), Binarize(one_values=[30, 35, 60, 100, 110, 120])])
         else:
             raise ValueError("Unknown preproc: %s" % preproc)
-        if model in ["SimCLR", "SupConv", "y-aware"]:
+        if model in ["SimCLR", "SupCon", "y-aware"]:
             if data_augmentation is None:
                 input_transforms.transforms.append(DA_Module())
+                logger.info("Data augmentation is set to the standard DA_model")
             else:
                 input_transforms.transforms.append(DA_Module(transforms=data_augmentation))
         return input_transforms
@@ -168,7 +169,6 @@ class BHBDataManager(OpenBHBDataManager):
         assert scheme == "train_val_test", "Scheme %s not implemented yet" % scheme
         assert N_train_max is None, "Sub-sampling BHB not implemented yet"
 
-        self.logger = logging.getLogger()
         self.dataset = dict()
         self.labels = labels or []
         self.mask = mask
@@ -197,13 +197,13 @@ class ClinicalDataManager(OpenBHBDataManager):
 
     def __init__(self, root: str, preproc: str, db: str, labels: List[str] = None, sampler: str = "random",
                  batch_size: int = 1, number_of_folds: int = None, N_train_max: int = None,
-                 mask=None, model: str = "base", device: str = "cuda", **dataloader_kwargs):
+                 mask=None, model: str = "base", data_augmentation: List[str] = None,
+                 device: str = "cuda", **dataloader_kwargs):
 
         assert db in ["scz", "bipolar", "asd"], "Unknown db: %s" % db
         assert sampler in ["random", "sequential"], "Unknown sampler '%s'" % sampler
-        assert model in [None, "base", "SimCLR", "SupConv", "y-aware"], f"Unknown model {model}"
+        assert model in [None, "base", "SimCLR", "SupCon", "y-aware"], f"Unknown model {model}"
 
-        self.logger = logging.getLogger("")
         self.dataset = dict()
         self.labels = labels or []
         self.mask = mask
@@ -214,25 +214,25 @@ class ClinicalDataManager(OpenBHBDataManager):
         self.dataloader_kwargs = dataloader_kwargs
 
         input_transforms = self.get_input_transforms(preproc=preproc, model=model,
-                                                     data_augmentation=dataloader_kwargs.get("data_augmentation"))
-
+                                                     data_augmentation=data_augmentation)
+        logger.debug(f"input_transforms : {input_transforms}")
         dataset_cls = None
         if db == "scz":
-            if model in ["SimCLR", "SupConv", "y-aware"]:
+            if model in ["SimCLR", "SupCon", "y-aware"]:
                 dataset_cls = ContrastiveSCZDataset
             else:
                 dataset_cls = SCZDataset if N_train_max is None else SubSCZDataset
         elif db == "bipolar":
-            if model in ["SimCLR", "SupConv", "y-aware"]:
+            if model in ["SimCLR", "SupCon", "y-aware"]:
                 dataset_cls = ContrastiveBipolarDataset
             else:
                 dataset_cls = BipolarDataset if N_train_max is None else SubBipolarDataset
         elif db == "asd":
-            if model in ["SimCLR", "SupConv", "y-aware"]:
+            if model in ["SimCLR", "SupCon", "y-aware"]:
                 dataset_cls = ContrastiveASDDataset
             else:
                 dataset_cls = ASDDataset if N_train_max is None else SubASDDataset
-        self.logger.debug(f"Dataset CLS : {dataset_cls}")
+        logger.debug(f"Dataset CLS : {dataset_cls}")
         if N_train_max is None:
             self.dataset["train"] = [dataset_cls(root, preproc=preproc, split="train",
                                                  transforms=input_transforms, target=labels)
