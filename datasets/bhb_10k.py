@@ -3,6 +3,7 @@ import os
 import numpy as np
 import logging
 
+logger = logging.getLogger()
 
 class BHB(OpenBHB):
     """
@@ -42,18 +43,14 @@ class BHB(OpenBHB):
                           "skeleton": "%s_t1mri_skeleton_participants.csv"}
         self._preproc_folders = {"vbm": "cat12vbm", "quasi_raw": "quasi_raw", "skeleton": "morphologist"}
 
-
     def _check_integrity(self):
         if self.scheme_name == "cv":
             raise NotImplementedError("No CV scheme implemented for BHB (yet).")
         is_complete = os.path.isdir(self.root)
         is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
         is_complete &= os.path.isfile(os.path.join(self.root, self._mapping_sites))
-        dir_files = {
-            "cat12vbm": ["%s_t1mri_mwp1_participants.csv", "%s_t1mri_mwp1_gs-raw_data64.npy"],
-            "quasi_raw": ["%s_t1mri_quasi_raw_participants.csv", "%s_t1mri_quasi_raw_data32_1.5mm_skimage.npy"],
-            "fs": []
-        }
+        dir_files = {folder: [self._npy_files[preproc], self._pd_files[preproc]]
+                     for preproc, folder in self._preproc_folders.items()}
         for (dir, files) in dir_files.items():
             for file in files:
                 for db in self._studies:
@@ -98,3 +95,46 @@ class BHB(OpenBHB):
             return "BHB-%s-%s-%s-%s"%(self.preproc, self.scheme_name, self.split, self.fold)
         return "BHB-%s-%s-%s"%(self.preproc, self.scheme_name, self.split)
 
+
+class HCPDataset(OpenBHB):
+    def _set_dataset_attributes(self):
+        self._studies = ['hcp']
+        self._train_val_test_scheme = "train_val_test_hcp_stratified.pkl"
+        self._cv_scheme = None
+        self._mapping_sites = "mapping_site_name-class_extended.pkl"
+        self._npy_files = {"vbm": "%s_t1mri_mwp1_gs-raw_data64.npy",
+                           "quasi_raw": "%s_t1mri_quasi_raw_data32_1.5mm_skimage.npy",
+                           "skeleton": "%s_t1mri_skeleton_data32.npy"}
+        self._pd_files = {"vbm": "%s_t1mri_mwp1_participants.csv",
+                          "quasi_raw": "%s_t1mri_quasi_raw_participants.csv",
+                          "skeleton": "%s_t1mri_skeleton_participants.csv"}
+        self._preproc_folders = {"skeleton": "morphologist"}
+
+    def _check_integrity(self):
+        is_complete = os.path.isdir(self.root)
+        is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
+        is_complete &= os.path.isfile(os.path.join(self.root, self._mapping_sites))
+        dir_files = {folder: [self._npy_files[preproc], self._pd_files[preproc]]
+                     for preproc, folder in self._preproc_folders.items()}
+        logger.debug(f"Dir files : {dir_files}")
+        logger.debug(f"Preproc folder : {self._preproc_folders}")
+        logger.debug(f"Studies : {self._studies}")
+        for (dir, files) in dir_files.items():
+            for file in files:
+                for db in self._studies:
+                    is_complete &= os.path.isfile(os.path.join(self.root, dir, file % db))
+        return is_complete
+
+    def _extract_metadata(self, df):
+        """
+        :param df: pandas DataFrame
+        :return: TIV and tissue volumes defined by the Neuromorphometrics atlas
+        """
+        metadata = ["tiv"] + [k for k in df.keys() if "GM_Vol" in k or "WM_Vol" in k or "CSF_Vol" in k]
+        if len(metadata) != 288:
+            logger.warning("Missing meta-data values (%i != %i)"%(len(metadata), 288))
+        if set(metadata) > set(df.keys()):
+            logger.warning("Missing meta-data columns: {}".format(set(metadata) - set(df.keys)))
+        if df[metadata].isna().sum().sum() != 0:
+            logger.warning("NaN values found in meta-data")
+        return df[metadata]
