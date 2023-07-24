@@ -53,6 +53,7 @@ if __name__ == "__main__":
                         help="Data Augmentation for contrastive models")
 
     # Self-supervised learning
+    parser.add_argument("--temperature", type=float, help="Hyper-parameter for contrastive loss", default=0.1)
     parser.add_argument("--sigma", type=float, help="Hyper-parameter for RBF kernel in self-supervised loss.", default=5)
 
     # Transfer Learning
