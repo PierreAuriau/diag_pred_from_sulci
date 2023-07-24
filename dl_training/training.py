@@ -6,8 +6,8 @@ import torch
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
-from dl_training.datamanager import OpenBHBDataManager, BHBDataManager, ClinicalDataManager
-from dl_training.losses import WeaklySupervisedNTXenLoss, SupConLoss
+from dl_training.datamanager import OpenBHBDataManager, BHBDataManager, ClinicalDataManager, HCPDataManager
+from dl_training.losses import WeaklySupervisedNTXenLoss, SupConLoss, NTXenLoss
 from architectures.alexnet import AlexNet3D_Dropout
 from architectures.resnet import resnet18
 from architectures.densenet import densenet121
@@ -26,7 +26,8 @@ class BaseTrainer:
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
-        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, sigma=args.sigma)
+        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, sigma=args.sigma,
+                                           temperature=args.temperature)
         self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -44,7 +45,7 @@ class BaseTrainer:
                                use_cuda=args.cuda,
                                loss=self.loss,
                                optimizer=self.optimizer)
-        #logger.debug(f"net : {self.net}")
+        # logger.debug(f"net : {self.net}")
         logger.debug(f"manager : {self.manager}")
         logger.debug(f"loss : {self.loss}")
         logger.debug(f"metrics : {self.metrics}")
@@ -104,13 +105,13 @@ class BaseTrainer:
     @staticmethod
     def build_loss(model, pb, cuda, **kwargs):
         if model == "SupCon":
-            loss = SupConLoss(temperature=0.1, base_temperature=0.1)
+            temperature = kwargs.get("temperature", 0.1)
+            loss = SupConLoss(temperature=temperature, base_temperature=temperature)
         elif model == "SimCLR":
-            loss = ""
-            logger.warning("No loss for SimCLR")
+            loss = NTXenLoss(temperature=kwargs.get("temperature", 0.1), return_logits=True)
         elif model == "y_aware":
             # Default value for sigma == 5
-            loss = WeaklySupervisedNTXenLoss(temperature=0.1, kernel="rbf",
+            loss = WeaklySupervisedNTXenLoss(temperature=kwargs.get("temperature", 0.1), kernel="rbf",
                                              sigma=kwargs.get("sigma", 5), return_logits=True)
         else:
             # Binary classification tasks
@@ -158,7 +159,7 @@ class BaseTrainer:
         if model == "y-aware":  # introduce age to improve the representation
             labels = ["age"]
         elif model == "SimCLR":
-            labels = ["site"]  # the labels will not be used
+            labels = ["sex"]  # the labels will not be used
             logger.warning("Labels for SimCLR model ?")
         else:
             if pb in ["scz", "bipolar", "asd"]:
@@ -183,20 +184,22 @@ class BaseTrainer:
                                     "and mv them to this directory: %s" % root)
         _manager_cls = None
         if pb in ["age", "sex", "site"]:
-            if N_train_max is not None and N_train_max <= 5000:
+            if N_train_max is not None and N_train_max <= 2000:
+                kwargs["N_train_max"] = None
+                _manager_cls = HCPDataManager
+            elif N_train_max is not None and N_train_max <= 5000:
+                kwargs["N_train_max"] = N_train_max
                 _manager_cls = OpenBHBDataManager
             else:
-                N_train_max = None
+                kwargs['N_train_max'] = None
                 _manager_cls = BHBDataManager
         elif pb == "self_supervised":
             _manager_cls = OpenBHBDataManager
         elif pb in ["scz", "bipolar", "asd"]:
             _manager_cls = ClinicalDataManager
-        if pb in ["scz", "bipolar", "asd"]:
             kwargs["db"] = pb
-        else:
-            kwargs["N_train_max"] = N_train_max
         kwargs["model"] = model
+        logger.debug(f"Datamanager : {_manager_cls}")
         logger.debug(f"Kwargs DataManager : {kwargs}")
         manager = _manager_cls(root, preproc, **kwargs)
         return manager
