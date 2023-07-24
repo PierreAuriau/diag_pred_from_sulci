@@ -19,7 +19,6 @@ logger = logging.getLogger()
 
 # FIXME : metrics --> be compliant with array
 # FIXME : improve it (metrics in particular) for age regression
-# FIXME : train multiple LogisticRegression ?
 
 
 class RegressionTester(BaseTester):
@@ -142,7 +141,10 @@ def main(argv):
 
     args = parser.parse_args(argv)
     args.data_augmentation = None
-    args.N_train_max = None
+    if args.pb in ["age", "sex"]:
+        args.N_train_max = 1100
+    else:
+        args.N_train_max = None
     args.lr = 1e-4
 
     # Setup Logging
