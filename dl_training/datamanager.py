@@ -8,11 +8,11 @@ from torchvision.transforms.transforms import Compose
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
 
 from datasets.open_bhb import OpenBHB, SubOpenBHB, List
-from datasets.bhb_10k import BHB
+from datasets.bhb_10k import BHB, HCPDataset
 from datasets.clinical_multisites import SCZDataset, BipolarDataset, ASDDataset, SubSCZDataset, \
     SubBipolarDataset, SubASDDataset
 from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
-    ContrastiveBipolarDataset, ContrastiveASDDataset, ContrastiveOpenBHB, ContrastiveSubOpenBHB
+    ContrastiveBipolarDataset, ContrastiveASDDataset, ContrastiveOpenBHB, ContrastiveSubOpenBHB, ContrastiveHCPDataset
 from preprocessing.transforms import Padding, Crop, Normalize, Binarize
 from augmentation.da_module import DA_Module
 
@@ -242,6 +242,45 @@ class ClinicalDataManager(OpenBHBDataManager):
                                                  nb_folds=self.number_of_folds, preproc=preproc, split="train",
                                                  transforms=input_transforms, target=labels)
                                      for f in range(self.number_of_folds)]
+        self.dataset["validation"] = [dataset_cls(root, preproc=preproc, split="val",
+                                                  transforms=input_transforms, target=labels)
+                                      for _ in range(self.number_of_folds)]
+        self.dataset["test"] = dataset_cls(root, preproc=preproc, split="test",
+                                           transforms=input_transforms, target=labels)
+        self.dataset["test_intra"] = dataset_cls(root, preproc=preproc, split="test_intra",
+                                                 transforms=input_transforms, target=labels)
+
+
+class HCPDataManager(OpenBHBDataManager):
+    def __init__(self, root: str, preproc: str, labels: List[str] = None, sampler: str = "random",
+                 batch_size: int = 1, number_of_folds: int = None, N_train_max: int = None,
+                 mask=None, model: str = "base", data_augmentation: List[str] = None,
+                 device: str = "cuda", **dataloader_kwargs):
+
+        assert sampler in ["random", "sequential"], "Unknown sampler '%s'" % sampler
+        assert model in [None, "base", "SimCLR", "SupCon", "y-aware"], f"Unknown model {model}"
+        assert N_train_max is None, "Sub-sampling HCP not implemented yet"
+
+        self.dataset = dict()
+        self.labels = labels or []
+        self.mask = mask
+        self.number_of_folds = number_of_folds
+        self.sampler = sampler
+        self.batch_size = batch_size
+        self.device = device
+        self.dataloader_kwargs = dataloader_kwargs
+
+        input_transforms = self.get_input_transforms(preproc=preproc, model=model,
+                                                     data_augmentation=data_augmentation)
+        logger.debug(f"input_transforms : {input_transforms}")
+        if model in ["SimCLR", "SupCon", "y-aware"]:
+            dataset_cls = ContrastiveHCPDataset
+        else:
+            dataset_cls = HCPDataset
+
+        self.dataset["train"] = [dataset_cls(root, preproc=preproc, target=labels, split="train",
+                                             transforms=input_transforms)
+                                 for _ in range(self.number_of_folds)]
         self.dataset["validation"] = [dataset_cls(root, preproc=preproc, split="val",
                                                   transforms=input_transforms, target=labels)
                                       for _ in range(self.number_of_folds)]
