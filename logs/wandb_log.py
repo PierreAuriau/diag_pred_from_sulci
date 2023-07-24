@@ -26,9 +26,9 @@ def main_log(train_history, valid_history):
 
     metrics = {
         "training_loss": train_dict["loss"],
-        "validation_loss": valid_dict["validation_loss"],
-        "roc_auc": valid_dict["roc_auc on validation set"]
-    }
+        "validation_loss": valid_dict["validation_loss"]}
+    if "roc_auc on validation set" in valid_dict.keys():
+        metrics["roc_auc"] = valid_dict["roc_auc on validation set"]
 
     define_wandb_metrics(metrics)
 
@@ -43,11 +43,8 @@ def main_log(train_history, valid_history):
     plots = plot_training_curves(metrics, nb_folds, nb_epochs, with_mean)
     wandb.log(plots)
 
-    metrics = {
-        "balanced_accuracy": valid_dict['balanced_accuracy on validation set'],
-        "roc_auc": valid_dict["roc_auc on validation set"]
-    }
-
+    if "balanced_accuracy on validation set" in valid_dict.keys():
+        metrics["balanced_accuracy"] = valid_dict['balanced_accuracy on validation set']
     update_summary(metrics, nb_folds)
 
 
