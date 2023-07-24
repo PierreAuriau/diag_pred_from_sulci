@@ -106,14 +106,14 @@ class Transformer(object):
                     "order" in kwargs):
                 kwargs["order"] = 0
             if np.random.rand() < trf.probability:
-                logger.debug("Applying {0}...".format(trf.transform))
+                #logger.debug("Applying {0}...".format(trf.transform))
                 if trf.with_channel:
                     transformed = trf.transform(transformed, **kwargs)
                 else:
                     for channel_id in range(transformed.shape[0]):
                         transformed[channel_id] = trf.transform(
                             transformed[channel_id], **kwargs)
-                logger.debug("Done.")
+                #logger.debug("Done.")
         if not self.with_channel:
             transformed = transformed[0]
         return transformed
