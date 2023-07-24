@@ -110,8 +110,7 @@ class Base(object):
                                 if key.replace('module.', '') != key:
                                     checkpoint['model'][key.replace('module.', '')] = checkpoint['model'][key]
                                     del(checkpoint['model'][key])
-                            #####
-                            unexpected= self.model.load_state_dict(checkpoint["model"], strict=False)
+                            unexpected = self.model.load_state_dict(checkpoint["model"], strict=False)
                             self.logger.info('Model loading info: {}'.format(unexpected))
                             self.logger.info('Model loaded')
                         except BaseException as e:
