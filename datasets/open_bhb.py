@@ -79,7 +79,7 @@ class OpenBHB(Dataset):
         if self.split == "val": self.split = "validation"
 
         if not self._check_integrity():
-            raise RuntimeError("Files not found. Check the the root directory %s"%root)
+            raise RuntimeError("Files not found. Check the root directory %s"%root)
 
         if scheme == "train_val_test":
             self.scheme = self.load_pickle(os.path.join(
@@ -175,18 +175,13 @@ class OpenBHB(Dataset):
         is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
         is_complete &= os.path.isfile(os.path.join(self.root, self._mapping_sites))
 
-        dir_files = {
-            "cat12vbm": ["%s_t1mri_mwp1_participants.csv", "%s_t1mri_mwp1_gs-raw_data64.npy"],
-            "quasi_raw": ["%s_t1mri_quasi_raw_participants.csv", "%s_t1mri_quasi_raw_data32_1.5mm_skimage.npy"],
-            "fs": []
-        }
-
+        dir_files = {folder: [self._npy_files[preproc], self._pd_files[preproc]]
+                     for preproc, folder in self._preproc_folders.items()}
         for (dir, files) in dir_files.items():
             for file in files:
                 for db in self._studies:
                     is_complete &= os.path.isfile(os.path.join(self.root, dir, file%db))
         return is_complete
-
 
     def _extract_mask(self, df, unique_keys):
         """
@@ -214,7 +209,6 @@ class OpenBHB(Dataset):
         assert set(metadata) <= set(df.keys()), "Missing meta-data columns: {}".format(set(metadata) - set(df.keys))
         assert df[metadata].isna().sum().sum() == 0, "NaN values found in meta-data"
         return df[metadata]
-
 
     def load_pickle(self, path: str):
         with open(path, 'rb') as f:
