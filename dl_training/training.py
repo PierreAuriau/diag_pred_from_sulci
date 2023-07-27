@@ -2,7 +2,9 @@ import logging
 import nibabel
 import os
 import numpy as np
+
 import torch
+import torch.nn as nn
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
