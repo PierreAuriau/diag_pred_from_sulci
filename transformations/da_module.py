@@ -1,0 +1,30 @@
+from transformations.transformer import Transformer
+from transformations.augmentations import Cutout, Rotation
+
+
+class DAModule(object):
+    def __init__(self, transforms=("Rotation", "Cutout")):
+        self.compose_transforms = Transformer()
+        for t in transforms:
+            if t == "Cutout":
+                self.compose_transforms.register(Cutout(patch_size=0.4, random_size=True,
+                                                        localization="on_data", min_size=0.1),
+                                                 probability=1, with_channel=True)
+            elif t == "Rotation":
+                self.compose_transforms.register(Rotation(angles=5, axes=[(0,1), (0,2), (1,2)], order=0),
+                                                 probability=0.5, with_channel=True)
+            elif t == "Rotation_Cutout":
+                # for wandb
+                self.compose_transforms.register(Cutout(patch_size=0.4, random_size=True,
+                                                        localization="random", min_size=0.1),
+                                                 probability=1, with_channel=True)
+                self.compose_transforms.register(Rotation(angles=5, axes=[(0,1), (0,2), (1,2)], order=0),
+                                                 probability=0.5, with_channel=True)
+            else:
+                raise ValueError(f"Unknown data augmentation : {t}")
+
+    def __call__(self, x):
+        return self.compose_transforms(x)
+
+    def __str__(self):
+        return f"DAModule: {self.compose_transforms}"

@@ -16,19 +16,6 @@ from collections import namedtuple
 import copy
 import logging
 import numpy as np
-from .spatial import affine
-from .spatial import flip
-from .spatial import deformation
-from .spatial import cutout
-from .intensity import add_blur
-from .intensity import add_noise
-from .intensity import add_ghosting
-from .intensity import add_spike
-from .intensity import add_biasfield
-from .intensity import add_motion
-from .intensity import add_offset
-from .intensity import add_swap
-from torchvision.transforms import Compose, RandomHorizontalFlip
 
 # Global parameters
 logger = logging.getLogger()
