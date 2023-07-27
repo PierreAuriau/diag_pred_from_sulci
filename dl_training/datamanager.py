@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import torch
 import logging
 from collections import namedtuple
@@ -13,8 +12,8 @@ from datasets.clinical_multisites import SCZDataset, BipolarDataset, ASDDataset,
     SubBipolarDataset, SubASDDataset
 from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
     ContrastiveBipolarDataset, ContrastiveASDDataset, ContrastiveOpenBHB, ContrastiveSubOpenBHB, ContrastiveHCPDataset
-from preprocessing.transforms import Padding, Crop, Normalize, Binarize
-from augmentation.da_module import DA_Module
+from transformations.preprocessing import Padding, Crop, Normalize, Binarize
+from transformations.da_module import DAModule
 
 logger = logging.getLogger()
 SetItem = namedtuple("SetItem", ["test", "train", "validation"], defaults=(None,) * 3)
@@ -147,10 +146,10 @@ class OpenBHBDataManager:
             raise ValueError("Unknown preproc: %s" % preproc)
         if model in ["SimCLR", "SupCon", "y-aware"]:
             if data_augmentation is None:
-                input_transforms.transforms.append(DA_Module())
-                logger.info("Data augmentation is set to the standard DA_model")
+                input_transforms.transforms.append(DAModule())
+                logger.info(f"Data augmentation is set to the standard DAModule")
             else:
-                input_transforms.transforms.append(DA_Module(transforms=data_augmentation))
+                input_transforms.transforms.append(DAModule(transforms=data_augmentation))
         return input_transforms
 
     def get_nb_folds(self):
