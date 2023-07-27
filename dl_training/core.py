@@ -60,7 +60,7 @@ class Base(object):
             be used to set specific optimizer parameters.
         """
         self.optimizer = kwargs.get("optimizer")
-        self.logger = logging.getLogger("SMLvsDL")
+        self.logger = logging.getLogger("Base")
         self.loss = kwargs.get("loss")
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.scaler = kwargs.get("gradscaler")
@@ -102,7 +102,7 @@ class Base(object):
             if checkpoint is not None:
                 if hasattr(checkpoint, "state_dict"):
                     self.model.load_state_dict(checkpoint.state_dict())
-                    self.logger.debug(f"State Dict Loaded")
+                    self.logger.debug(f"Model State Dict Loaded : {pretrained}")
                 elif isinstance(checkpoint, dict):
                     if "model" in checkpoint:
                         try:
@@ -111,8 +111,8 @@ class Base(object):
                                     checkpoint['model'][key.replace('module.', '')] = checkpoint['model'][key]
                                     del(checkpoint['model'][key])
                             unexpected = self.model.load_state_dict(checkpoint["model"], strict=False)
-                            self.logger.info('Model loading info: {}'.format(unexpected))
-                            self.logger.info('Model loaded')
+                            self.logger.info(f'Model loading info: {unexpected}')
+                            self.logger.info(f'Model loaded : {pretrained}')
                         except BaseException as e:
                             self.logger.error('Error while loading the model\'s weights: %s' % str(e))
                             raise ValueError("")
@@ -130,6 +130,7 @@ class Base(object):
                             self.logger.warning("The optimizer's weights are not restored ! ")
                 else:
                     self.model.load_state_dict(checkpoint)
+                    self.logger.debug(f"State Dict Loaded : {pretrained}")
 
         if use_multi_gpu and torch.cuda.device_count() > 1:
             self.model = DataParallel(self.model)
