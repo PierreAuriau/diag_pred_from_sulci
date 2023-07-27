@@ -1,11 +1,11 @@
 import os
 import pickle
-import nibabel
+import logging
 from logs.utils import get_chk_name
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
 from dl_training.training import BaseTrainer
-from preprocessing.transforms import *
+from transformations.preprocessing import *
 
 logger = logging.getLogger()
 
