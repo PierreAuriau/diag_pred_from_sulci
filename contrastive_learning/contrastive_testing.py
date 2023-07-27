@@ -1,18 +1,17 @@
 import os
 import pickle
-import numpy as np
 import argparse
 import sys
+import logging
 
+import numpy as np
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
 from logs.utils import get_chk_name
 from dl_training.core import Base
 from dl_training.training import BaseTrainer
 from dl_training.testing import BaseTester
-from preprocessing.transforms import *
 from logs.utils import setup_logging
 
 logger = logging.getLogger()
@@ -52,6 +51,7 @@ class RegressionTester(BaseTester):
                              loss=self.loss,
                              metrics=self.metrics,
                              pretrained=pretrained_path,
+                             load_optimizer=False,
                              use_cuda=self.args.cuda)
 
                 class_weights = {"scz": 1.131, "asd": 1.584, "bipolar": 1.584, "sex": 1.0, "age": None}
@@ -159,27 +159,3 @@ def main(argv):
 if __name__ == "__main__":
 
     main(argv=sys.argv[1:])
-    """
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.model = "SupCon"
-    args.root = "/home_local/pa267054/root"
-    args.preproc = "skeleton"
-    args.checkpoint_dir = "/neurospin/psy_sbox/analyses/202205_predict_neurodev/models/20230704_test_supcon"
-    args.pb = "bipolar"
-    args.nb_folds = 3
-    args.nb_epochs = 50
-    args.net = "densenet121"
-    args.exp_name = "densenet121_skeleton_bipolar"
-    args.sampler = "random"
-    args.batch_size = 32
-    args.lr = 1e-4
-    args.N_train_max = None
-    args.cuda = True
-    args.num_cpu_workers = 4
-    args.data_augmentation = None
-    args.pretrained_path = None
-    args.folds = None
-    args.outfile_name = None
-    tester = RegressionTester(args)
-    tester.run()"""
