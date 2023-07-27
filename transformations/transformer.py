@@ -112,3 +112,6 @@ class Transformer(object):
         for trf in self.transforms:
             s += '\n\t- '+trf.__str__()
         return s
+
+    def __len__(self):
+        return len(self.transforms)

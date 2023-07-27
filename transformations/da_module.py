@@ -27,4 +27,9 @@ class DAModule(object):
         return self.compose_transforms(x)
 
     def __str__(self):
-        return f"DAModule: {self.compose_transforms}"
+        if len(self.compose_transforms) == 0:
+            return "Empty DAModule"
+        string = "DAModule :"
+        for trf in self.compose_transforms.transforms:
+            string += f"\n\t* {trf} | p={trf.probability}"
+        return string
