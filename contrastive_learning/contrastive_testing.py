@@ -6,6 +6,7 @@ import logging
 
 import numpy as np
 from sklearn.linear_model import LogisticRegression
+from sklearn.manifold import TSNE
 from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
 from logs.utils import get_chk_name
@@ -96,7 +97,7 @@ class RegressionTester(BaseTester):
                     loader = self.manager.get_dataloader(test=(test == "external"),
                                                          test_intra=(test == "internal"),
                                                          fold_index=fold)
-                    z, labels, _ = model.get_embeddings(loader.test, )
+                    z, labels, _ = model.get_embeddings(loader.test)
                     X = np.array(z)
                     y_true = np.array(labels)
                     y_pred = clf.predict_proba(X)
@@ -107,9 +108,95 @@ class RegressionTester(BaseTester):
                                                                            y_true=y_true)
                     predictions[f"{test} test"]["balanced_accuracy"] = balanced_accuracy_score(y_pred=y_score > 0.5,
                                                                                                y_true=y_true)
+                if self.args.save_coef:
+                    predictions["coef"] = clf.coef_
+                    logger.info("Coefficients saved")
                 with open(os.path.join(self.args.checkpoint_dir, exp_name), 'wb') as f:
                     pickle.dump(predictions, f)
+                    logger.info("Pickle saved")
 
+
+class TSNETester(BaseTester):
+
+    def __init__(self, args):
+        self.args = args
+        self.net = BaseTrainer.build_network(args.net, args.model, out_block="features", in_channels=1)
+        self.manager = BaseTrainer.build_data_manager("base", args.pb, args.preproc, args.root, args.N_train_max,
+                                                      sampler=args.sampler, batch_size=args.batch_size,
+                                                      number_of_folds=args.nb_folds,
+                                                      device=('cuda' if args.cuda else 'cpu'),
+                                                      num_workers=args.num_cpu_workers,
+                                                      pin_memory=True)
+        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, sigma=args.sigma)
+        self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
+        if self.args.pretrained_path and self.manager.number_of_folds > 1:
+            logger.warning('Several folds found while a unique pretrained path is set!')
+
+    def run(self):
+        epochs_tested = self.get_epochs_to_test()
+        folds_to_test = self.get_folds_to_test()
+        for fold in folds_to_test:
+            for epoch in epochs_tested[fold]:
+                pretrained_path = self.args.pretrained_path or \
+                                  os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, fold, epoch))
+                logger.debug(f"Pretrained path ({fold}/{epoch}): {pretrained_path}")
+                if self.args.outfile_name is None:
+                    self.args.outfile_name = f"TSNETester_{self.args.exp_name}"
+                exp_name = f"{self.args.outfile_name}_fold{fold}_epoch{epoch}.npy"
+                model = Base(model=self.net,
+                             loss=self.loss,
+                             metrics=self.metrics,
+                             pretrained=pretrained_path,
+                             load_optimizer=False,
+                             use_cuda=self.args.cuda)
+
+                tsne = TSNE(n_components=2, n_iter=1000, n_iter_without_progress=300, metric='euclidean',
+                            init='pca', verbose=0, random_state=None,
+                            n_jobs=self.args.num_cpu_workers)
+
+                inputs, labels, embeddings = [], [], []
+                # Train & val
+                logger.info("Training set")
+                loader = self.manager.get_dataloader(train=True,
+                                                     validation=True,
+                                                     fold_index=fold)
+                z, y, x = model.get_embeddings(loader.train)
+                z = np.array(z)
+                z_flat = z.reshape(z.shape[0], np.prod(z.shape[1:]))
+                embeddings.append(z_flat)
+                inputs.append(x)
+                labels.append(y)
+                logger.info("Validation set")
+                z, y, x = model.get_embeddings(loader.validation)
+                z = np.array(z)
+                z_flat = z.reshape(z.shape[0], np.prod(z.shape[1:]))
+                embeddings.append(z_flat)
+                inputs.append(x)
+                labels.append(y)
+                # Tests
+                for test in ["internal", "external"]:
+                    logger.info(f"{test} test")
+                    loader = self.manager.get_dataloader(test=(test == "external"),
+                                                         test_intra=(test == "internal"),
+                                                         fold_index=fold)
+                    z, y, x = model.get_embeddings(loader.test)
+                    z = np.array(z)
+                    z_flat = z.reshape(z.shape[0], np.prod(z.shape[1:]))
+                    embeddings.append(z_flat)
+                    inputs.append(x)
+                    labels.append(y)
+
+                X = np.concatenate(embeddings, axis=0)
+                X_transform = tsne.fit_transform(X)
+
+                inputs = np.concatenate(inputs, axis=0)
+                labels = np.concatenate(labels, axis=0)
+                np.save(os.path.join(self.args.checkpoint_dir, f"TSNETester_{self.args.exp_name}_fold{fold}_labels.npy"),
+                        labels)
+                np.save(os.path.join(self.args.checkpoint_dir,  f"TSNETester_{self.args.exp_name}_fold{fold}_inputs.npy"),
+                        inputs)
+                np.save(os.path.join(self.args.checkpoint_dir, exp_name), X_transform)
+                logger.info("Array saved")
 
 def main(argv):
     parser = argparse.ArgumentParser(
@@ -131,6 +218,7 @@ def main(argv):
     parser.add_argument("-b", "--batch_size", type=int, required=True)
     parser.add_argument("--nb_epochs", type=int, default=300)
 
+    parser.add_argument("--save_coef", action="store_true", help="Save coefficients of the logistic regression.")
     parser.add_argument("--num_cpu_workers", type=int, default=3,
                         help="Number of workers assigned to do the preprocessing step (used by DataLoader of Pytorch)")
     parser.add_argument("--sampler", choices=["random", "weighted_random", "sequential"], required=True)
@@ -157,5 +245,39 @@ def main(argv):
 
 
 if __name__ == "__main__":
-
+    """
     main(argv=sys.argv[1:])
+    """
+    args =  argparse.ArgumentParser().parse_args()
+    args.root = "/home_local/pa267054/root"
+    args.preproc = "skeleton"
+    args.checkpoint_dir = "/neurospin/psy_sbox/analyses/202205_predict_neurodev/models/20230711_supcon_random_cutout/visionary-sweep-1"
+    args.exp_name = "densenet121_skeleton_bipolar"
+    args.pb = "bipolar"
+    args.net = "densenet121"
+    args.model = "SupCon"
+    args.batch_size = 32
+    args.nb_epochs = 50
+    args.nb_folds = 3
+    args.sampler = "sequential"
+    args.num_cpu_workers = 8
+    args.cuda = True
+    args.verbose = True
+    args.folds = None
+    args.data_augmentation = None
+    args.outfile_name = None
+    args.sigma = 0
+    args.pretrained_path = None
+    if args.pb in ["age", "sex"]:
+        args.N_train_max = 1100
+    else:
+        args.N_train_max = None
+    args.lr = 1e-4
+
+    # Setup Logging
+    setup_logging(level="debug" if args.verbose else "info",
+                  logfile=os.path.join(args.checkpoint_dir, f"{args.exp_name}.log"))
+    logger.info(f"Checkpoint directory : {args.checkpoint_dir}")
+
+    tester = TSNETester(args)
+    tester.run()
