@@ -20,6 +20,9 @@ class DAModule(object):
                                                  probability=1, with_channel=True)
                 self.compose_transforms.register(Rotation(angles=5, axes=[(0,1), (0,2), (1,2)], order=0),
                                                  probability=0.5, with_channel=True)
+            elif t == "no":
+                # no da
+                break
             else:
                 raise ValueError(f"Unknown data augmentation : {t}")
 
