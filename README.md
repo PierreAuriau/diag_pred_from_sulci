@@ -1,1 +1,1 @@
-# contrastive_learning_with_skeleton
+# Supervised diagnosis prediction from cortical sulci
