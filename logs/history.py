@@ -2,8 +2,6 @@
 """
 Module that provides logging utilities.
 """
-
-
 # System import
 import os
 import logging
@@ -11,6 +9,7 @@ import collections
 import time
 import datetime
 import pickle
+import json
 
 # Third party import
 import numpy as np
@@ -116,11 +115,18 @@ class History(object):
             - self.history[self.steps[0]]["__timestamp__"])
         return datetime.timedelta(seconds=seconds)
 
-    def save(self, outdir, fold, epoch):
-        outfile = os.path.join(
-            outdir, "{0}_{1}_epoch_{2}.pkl".format(self.name, fold, epoch))
-        with open(outfile, "wb") as open_file:
-            pickle.dump(self, open_file)
+    def save(self, outdir, fold, epoch, to_dict=False):
+        if to_dict:
+            dict_to_save = self.to_dict()
+            outfile = os.path.join(outdir,
+                                   f"{self.name}_fold{fold}_epoch{epoch}.pkl")
+            with open(outfile, "wb") as open_file:
+                pickle.dump(dict_to_save, open_file)
+        else:
+            outfile = os.path.join(
+                outdir, "{0}_{1}_epoch_{2}.pkl".format(self.name, fold, epoch))
+            with open(outfile, "wb") as open_file:
+                pickle.dump(self, open_file)
 
     @classmethod
     def load(cls, file_name, folds=None):

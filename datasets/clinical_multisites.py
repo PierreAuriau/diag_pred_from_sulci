@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from torch.utils.data.dataset import Dataset
 from abc import ABC, abstractmethod
 import os, pickle
@@ -340,97 +342,6 @@ class ClinicalBase(ABC, Dataset):
         return "%s-%s-%s" % (type(self).__name__, self.preproc, self.split)
 
 
-class SubClinicalDataset(ClinicalBase):
-    """
-        This class is a subset of ClinicalBase. It allows to perform (Stratified) Shuffle Split (i.e Monte-Carlo CV)
-        inside the training set for a given N_train and # folds. The stratification can be multi-label and is
-        defined by the user. The random seed is fixed so that the code is fully reproducible.
-        """
-
-    def __init__(self, *args, N_train_max: int = None, stratify: [bool, str, List[str]] = True, fold: int = 0,
-                 nb_folds: int = 3, load_data: bool = False, **kwargs):
-        """
-        :param args: args to give to ClinicalBase
-        :param N_train_max: number of training samples to sub-sample from OpenBHB
-        :param stratify: stratify according to the given column names. It can stratify in a multi-label fashion.
-                         If set to True, stratify according to Age+Sex+Site+Diagnosis.
-        :param nb_folds: number of folds in the Monte-Carlo sub-sampling
-        :param load_data: If True, loads all the data in memory
-        :param kwargs: passed to OpenBHB
-        """
-        super().__init__(*args, **kwargs)
-        self.args, self.kwargs = args, kwargs
-        self.stratify = stratify
-        if isinstance(stratify, str):
-            self.stratify = [stratify]
-        if isinstance(stratify, bool):
-            self.stratify = list(self.all_labels.keys())
-        if isinstance(self.stratify, list):
-            assert (set(self.stratify) <= set(self.all_labels)) and len(self.stratify) > 0
-
-        if self.split == "train":
-            self.fold = fold
-            self.nb_folds = nb_folds
-            self.N_train_max = N_train_max or len(self)
-            assert 0 <= self.fold < self.nb_folds, "Incorrect fold index: %i" % self.fold
-            assert self.N_train_max <= len(self), "Inconsistent N_train (got >%i)" % len(self)
-            if self.stratify:
-                if len(self.stratify) > 1:
-                    splitter = MultilabelStratifiedShuffleSplit(n_splits=nb_folds, train_size=self.N_train_max,
-                                                                test_size=len(self) - self.N_train_max,
-                                                                random_state=0)
-                else:
-                    splitter = StratifiedShuffleSplit(n_splits=nb_folds, train_size=self.N_train_max,
-                                                      random_state=0)
-            else:
-                splitter = ShuffleSplit(n_splits=self.nb_folds, train_size=self.N_train_max, random_state=0)
-            dummy_x = np.zeros(len(self))
-            if isinstance(self.stratify, list):
-                y = self.all_labels[self.stratify].copy(deep=True).values
-                if "age" in self.stratify:
-                    i_age = self.stratify.index("age")
-                    y[:, i_age] = SubClinicalDataset.discretize_continous_label(y[:, i_age].astype(np.float32))
-            else:
-                raise ValueError("Unknown stratifier: {}".format(self.stratify))
-            gen = splitter.split(dummy_x, y)
-            for _ in range(self.fold + 1):
-                train_index, _ = next(gen)
-            self._train_index = train_index
-            self.all_labels = self.all_labels.iloc[train_index].reset_index(drop=True)
-            self.target = self.target[train_index]
-            self.metadata = self.metadata.iloc[self._train_index].reset_index(drop=True)
-            self.id = self.id.iloc[self._train_index].reset_index(drop=True)
-            self.shape = (len(self._train_index), *self.shape[1:])
-
-        if load_data:
-            self._data_loaded = self.get_data()[0]
-
-    @staticmethod
-    def discretize_continous_label(labels, bins: [str, int] = "sturges"):
-        # Get an estimation of the best bin edges. 'Sturges' is conservative for pretty large datasets (N>1000).
-        bin_edges = np.histogram_bin_edges(labels, bins=bins)
-        # Discretizes the values according to these bins
-        discretization = np.digitize(labels, bin_edges[1:], right=True)
-        return discretization
-
-    def copy(self):
-        this = self.__class__(*self.args, N_train_max=self.N_train_max, stratify=self.stratify,
-                              nb_folds=self.nb_folds, **self.kwargs)
-        return this
-
-    def __getitem__(self, idx: int):
-        if self.split == "train":
-            if self._data_loaded is not None:
-                sample, target = self._data_loaded[idx], self.target[idx]
-            else:
-                (dataset_idx, sample_idx) = self._mapping_idx(self._train_index[idx])
-                sample, target = self._data[dataset_idx][sample_idx], self.target[idx]
-            if self.transforms is not None:
-                sample = self.transforms(sample)
-            return sample, target.astype(np.float32)
-        return super().__getitem__(idx)
-
-
 class SCZDataset(ClinicalBase):
 
     @property
@@ -467,12 +378,6 @@ class SCZDataset(ClinicalBase):
         super().__init__(root, *args, **kwargs)
 
 
-class SubSCZDataset(SubClinicalDataset, SCZDataset):
-    def __init__(self, root: str, *args, **kwargs):
-        self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_scz.pkl"))
-        super().__init__(root, *args, **kwargs) # Call to SubClinicalDataset
-
-
 class BipolarDataset(ClinicalBase):
 
     @property
@@ -504,12 +409,6 @@ class BipolarDataset(ClinicalBase):
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_bip.pkl"))
 
-    def __init__(self, root: str, *args, **kwargs):
-        self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_bip.pkl"))
-        super().__init__(root, *args, **kwargs)
-
-
-class SubBipolarDataset(SubClinicalDataset, BipolarDataset):
     def __init__(self, root: str, *args, **kwargs):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_bip.pkl"))
         super().__init__(root, *args, **kwargs)
@@ -550,12 +449,6 @@ class ASDDataset(ClinicalBase):
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_asd.pkl"))
 
-    def __init__(self, root: str, *args, **kwargs):
-        self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_asd.pkl"))
-        super().__init__(root, *args, **kwargs)
-
-
-class SubASDDataset(SubClinicalDataset, ASDDataset):
     def __init__(self, root: str, *args, **kwargs):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_asd.pkl"))
         super().__init__(root, *args, **kwargs)

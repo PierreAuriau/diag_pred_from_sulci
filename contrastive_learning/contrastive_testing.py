@@ -26,13 +26,13 @@ class RegressionTester(BaseTester):
     def __init__(self, args):
         self.args = args
         self.net = BaseTrainer.build_network(args.net, args.model, out_block="features", in_channels=1)
-        self.manager = BaseTrainer.build_data_manager("base", args.pb, args.preproc, args.root, args.N_train_max,
+        self.manager = BaseTrainer.build_data_manager("base", args.pb, args.preproc, args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
                                                       number_of_folds=args.nb_folds,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
-        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, sigma=args.sigma)
+        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
         self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
         if self.args.pretrained_path and self.manager.number_of_folds > 1:
             logger.warning('Several folds found while a unique pretrained path is set!')
@@ -54,7 +54,7 @@ class RegressionTester(BaseTester):
                              pretrained=pretrained_path,
                              use_cuda=self.args.cuda)
 
-                class_weights = {"scz": 1.131, "asd": 1.584, "bipolar": 1.584, "sex": 1.0, "age": None}
+                class_weights = {"scz": 1.131, "asd": 1.584, "bd": 1.584}
                 clf = LogisticRegression(penalty='l2', C=1.0, tol=0.0001, fit_intercept=True,
                                          class_weight=class_weights[self.args.pb],
                                          random_state=None, solver='lbfgs', max_iter=1000, verbose=0,
@@ -121,30 +121,26 @@ def main(argv):
     parser.add_argument("--exp_name", type=str, required=True)
     parser.add_argument("--outfile_name", type=str,
                         help="The output file name used to save the results in testing mode.")
-    parser.add_argument("--pb", type=str, choices=["age", "sex", "scz", "bipolar", "asd", "self_supervised"])
+    parser.add_argument("--pb", type=str, choices=["scz", "bd", "asd"])
     parser.add_argument("--folds", nargs='+', type=int, help="Fold indexes to run during the training")
     parser.add_argument("--nb_folds", type=int, default=5)
 
     parser.add_argument("--net", type=str, help="Network to use")
-    parser.add_argument("--model", type=str, help="Model to use", choices=["base", "SimCLR", "SupCon", "y-aware"],
+    parser.add_argument("--model", type=str, help="Model to use", choices=["base", "SupCon"],
                         default="base")
     parser.add_argument("-b", "--batch_size", type=int, required=True)
     parser.add_argument("--nb_epochs", type=int, default=300)
 
     parser.add_argument("--num_cpu_workers", type=int, default=3,
-                        help="Number of workers assigned to do the preprocessing step (used by DataLoader of Pytorch)")
+                        help="Number of workers assigned to do the preprocessing step "
+                             "(used by DataLoader of Pytorch)")
     parser.add_argument("--sampler", choices=["random", "weighted_random", "sequential"], required=True)
     parser.add_argument("--pretrained_path", type=str)
-    parser.add_argument("--sigma", type=float, help="Hyper-parameter for RBF kernel in self-supervised loss.", default=5)
     parser.add_argument("--cuda", type=bool, default=True, help="If True, executes the code on GPU")
     parser.add_argument("-v", "--verbose", action="store_true", help="Activate verbosity mode")
 
     args = parser.parse_args(argv)
     args.data_augmentation = None
-    if args.pb in ["age", "sex"]:
-        args.N_train_max = 1100
-    else:
-        args.N_train_max = None
     args.lr = 1e-4
 
     # Setup Logging
@@ -157,29 +153,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-
     main(argv=sys.argv[1:])
-    """
-    parser = argparse.ArgumentParser()
-    args = parser.parse_args()
-    args.model = "SupCon"
-    args.root = "/home_local/pa267054/root"
-    args.preproc = "skeleton"
-    args.checkpoint_dir = "/neurospin/psy_sbox/analyses/202205_predict_neurodev/models/20230704_test_supcon"
-    args.pb = "bipolar"
-    args.nb_folds = 3
-    args.nb_epochs = 50
-    args.net = "densenet121"
-    args.exp_name = "densenet121_skeleton_bipolar"
-    args.sampler = "random"
-    args.batch_size = 32
-    args.lr = 1e-4
-    args.N_train_max = None
-    args.cuda = True
-    args.num_cpu_workers = 4
-    args.data_augmentation = None
-    args.pretrained_path = None
-    args.folds = None
-    args.outfile_name = None
-    tester = RegressionTester(args)
-    tester.run()"""

@@ -27,8 +27,7 @@ class Base(object):
     """
     def __init__(self, optimizer_name="Adam", learning_rate=1e-3,
                  loss_name="NLLLoss", metrics=None, use_cuda=False,
-                 pretrained=None, load_optimizer=True, use_multi_gpu=True,
-                 **kwargs):
+                 pretrained=None, use_multi_gpu=True, **kwargs):
         """ Class instantiation.
 
         Observers will be notified, allowed signals are:
@@ -51,8 +50,6 @@ class Base(object):
             whether to use GPU or CPU.
         pretrained: path, default None
             path to the pretrained model or weights.
-        load_optimizer: boolean, default True
-            if pretrained is set, whether to also load the optimizer's weights or not
         use_multi_gpu: boolean, default True
             if several GPUs are available, use them during forward/backward pass
         kwargs: dict
@@ -116,18 +113,6 @@ class Base(object):
                         except BaseException as e:
                             self.logger.error('Error while loading the model\'s weights: %s' % str(e))
                             raise ValueError("")
-                    if "optimizer" in checkpoint:
-                        if load_optimizer:
-                            try:
-                                self.optimizer.load_state_dict(checkpoint["optimizer"])
-                                for state in self.optimizer.state.values():
-                                    for k, v in state.items():
-                                        if torch.is_tensor(v):
-                                            state[k] = v.to(self.device)
-                            except BaseException as e:
-                                self.logger.error('Error while loading the optimizer\'s weights: %s' % str(e))
-                        else:
-                            self.logger.warning("The optimizer's weights are not restored ! ")
                 else:
                     self.model.load_state_dict(checkpoint)
 

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import logging
 import nibabel
 import os
@@ -6,8 +8,8 @@ import torch
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
-from dl_training.datamanager import OpenBHBDataManager, BHBDataManager, ClinicalDataManager, HCPDataManager
-from dl_training.losses import WeaklySupervisedNTXenLoss, SupConLoss, NTXenLoss
+from dl_training.datamanager import ClinicalDataManager
+from dl_training.losses import SupConLoss
 from architectures.alexnet import AlexNet3D_Dropout
 from architectures.resnet import resnet18
 from architectures.densenet import densenet121
@@ -20,20 +22,20 @@ class BaseTrainer:
     def __init__(self, args):
         self.args = args
         self.net = BaseTrainer.build_network(args.net, args.model, num_classes=1, in_channels=1)
-        self.manager = BaseTrainer.build_data_manager(args.model, args.pb, args.preproc, args.root, args.N_train_max,
+        self.manager = BaseTrainer.build_data_manager(args.model, args.pb, args.preproc, args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
-                                                      number_of_folds=args.nb_folds, data_augmentation=args.data_augmentation,
+                                                      number_of_folds=args.nb_folds,
+                                                      data_augmentation=args.data_augmentation,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
-        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, sigma=args.sigma,
-                                           temperature=args.temperature)
+        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, temperature=args.temperature)
         self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = self.build_scheduler(args.step_size_scheduler, args.gamma_scheduler)
 
-        if args.model in ["SimCLR", "SupCon", "y-aware"]:
+        if args.model == "SupCon":
             model_cls = ContrastiveBase
         else:
             model_cls = Base
@@ -41,7 +43,6 @@ class BaseTrainer:
         self.model = model_cls(model=self.net,
                                metrics=self.metrics,
                                pretrained=args.pretrained_path,
-                               load_optimizer=args.load_optimizer,
                                use_cuda=args.cuda,
                                loss=self.loss,
                                optimizer=self.optimizer)
@@ -86,19 +87,11 @@ class BaseTrainer:
 
     @staticmethod
     def build_metrics(pb, model):
-        if model in ["SimCLR", "y-aware"]:
-            # for SimCLR, accuracy to retrieve the original views from same image
+        if model == "SupCon":
+            # FIXME : metrics for SupCon
             metrics = ["accuracy"]
-        elif model == "SupCon":
-            metrics = ["accuracy"]
-            logger.warning("Metrics for SupCon ?")
         else:
-            if pb in ["scz", "bipolar", "asd", "sex"]:
-                metrics = ["balanced_accuracy", "roc_auc"]
-            elif pb == "age":
-                metrics = ["RMSE"]
-            else:
-                raise NotImplementedError("Unknown pb: %s" % pb)
+            metrics = ["balanced_accuracy", "roc_auc"]
         logger.debug(f"Metrics : {metrics}")
         return metrics
 
@@ -107,28 +100,12 @@ class BaseTrainer:
         if model == "SupCon":
             temperature = kwargs.get("temperature", 0.1)
             loss = SupConLoss(temperature=temperature, base_temperature=temperature)
-        elif model == "SimCLR":
-            loss = NTXenLoss(temperature=kwargs.get("temperature", 0.1), return_logits=True)
-        elif model == "y_aware":
-            # Default value for sigma == 5
-            loss = WeaklySupervisedNTXenLoss(temperature=kwargs.get("temperature", 0.1), kernel="rbf",
-                                             sigma=kwargs.get("sigma", 5), return_logits=True)
         else:
             # Binary classification tasks
-            if pb in ["scz", "bipolar", "asd", "sex"]:
-                # Balanced BCE loss
-                pos_weights = {"scz": 1.131, "asd": 1.584, "bipolar": 1.584, "sex": 1.0}
-                loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weights[pb], dtype=torch.float32,
-                                                                    device=('cuda' if cuda else 'cpu')))
-            # Regression task
-            elif pb == "age":
-                loss = nn.L1Loss()
-            # Self-supervised task
-            elif pb == "self_supervised":
-                loss = WeaklySupervisedNTXenLoss(temperature=0.1, kernel="rbf",
-                                                 sigma=kwargs.get("sigma"), return_logits=True)
-            else:
-                raise ValueError("Unknown problem: %s" % pb)
+            # Balanced BCE loss
+            pos_weights = {"scz": 1.131, "asd": 1.584, "bd": 1.584, "sex": 1.0}
+            loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weights[pb], dtype=torch.float32,
+                                                                device=('cuda' if cuda else 'cpu')))
         return loss
 
     @staticmethod
@@ -146,7 +123,7 @@ class BaseTrainer:
         elif name == "densenet121":
             net = densenet121(num_classes=num_classes, out_block=out_block, **kwargs)
         elif name == "alexnet":  # AlexNet 3D version derived from Abrol et al., 2021
-            if model in ["SimCLR", "SupCon", "y-aware"]:
+            if model == "SupCon":
                 raise NotImplementedError("AlexNet not implemented for contrastive learning")
             else:
                 net = AlexNet3D_Dropout(num_classes=num_classes)
@@ -155,51 +132,12 @@ class BaseTrainer:
         return net
 
     @staticmethod
-    def build_data_manager(model, pb, preproc, root, N_train_max, **kwargs):
-        if model == "y-aware":  # introduce age to improve the representation
-            labels = ["age"]
-        elif model == "SimCLR":
-            labels = ["sex"]  # the labels will not be used
-            logger.warning("Labels for SimCLR model ?")
-        else:
-            if pb in ["scz", "bipolar", "asd"]:
-                labels = ["diagnosis"]
-            else:
-                labels = [pb]  # either "age" or "sex"
-        kwargs["labels"] = labels
-        try:
-            if preproc == "vbm":
-                mask = nibabel.load(os.path.join(root, "mni_cerebrum-gm-mask_1.5mm.nii.gz"))
-                mask = (mask.get_data() != 0)
-            elif preproc == "quasi_raw":
-                mask = nibabel.load(os.path.join(root, "mni_raw_brain-mask_1.5mm.nii.gz"))
-                mask = (mask.get_data() != 0)
-            elif preproc == "skeleton":
-                mask = None
-            else:
-                raise ValueError(f"Unknown preproc {preproc}")
-            kwargs["mask"] = mask
-        except FileNotFoundError:
-            raise FileNotFoundError("Brain masks not found. You can find them in /masks directory "
-                                    "and mv them to this directory: %s" % root)
-        _manager_cls = None
-        if pb in ["age", "sex", "site"]:
-            if N_train_max is not None and N_train_max <= 2000:
-                kwargs["N_train_max"] = None
-                _manager_cls = HCPDataManager
-            elif N_train_max is not None and N_train_max <= 5000:
-                kwargs["N_train_max"] = N_train_max
-                _manager_cls = OpenBHBDataManager
-            else:
-                kwargs['N_train_max'] = None
-                _manager_cls = BHBDataManager
-        elif pb == "self_supervised":
-            _manager_cls = OpenBHBDataManager
-        elif pb in ["scz", "bipolar", "asd"]:
-            _manager_cls = ClinicalDataManager
-            kwargs["db"] = pb
+    def build_data_manager(root, preproc, pb, model, **kwargs):
+        kwargs["labels"] = ["diagnosis"]
+        kwargs["db"] = pb
         kwargs["model"] = model
-        logger.debug(f"Datamanager : {_manager_cls}")
         logger.debug(f"Kwargs DataManager : {kwargs}")
+        _manager_cls = ClinicalDataManager
+        logger.debug(f"Datamanager : {_manager_cls}")
         manager = _manager_cls(root, preproc, **kwargs)
         return manager
