@@ -245,7 +245,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    """
+    
     main(argv=sys.argv[1:])
     """
     args =  argparse.ArgumentParser().parse_args()
@@ -281,3 +281,4 @@ if __name__ == "__main__":
 
     tester = TSNETester(args)
     tester.run()
+    """
