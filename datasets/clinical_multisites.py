@@ -23,17 +23,6 @@ class ClinicalBase(ABC, Dataset):
         - (eventually) an other intra-test set
 
         This generic dataset is memory-efficient, taking advantage of memory-mapping implemented with NumPy.
-        It always come with:
-        ... 3 pre-processings:
-            - Quasi-Raw
-            - VBM
-            - Skeleton
-        ... And 2 differents tasks:
-            - Diagnosis prediction (classification)
-            - Site prediction (classification)
-        ... With meta-data:
-            - user-defined unique identifier across pre-processing and split
-            - TIV + ROI measures based on Neuromorphometrics atlas
     Attributes:
           * target, list[int]: labels to predict
           * all_labels, pd.DataFrame: all labels stored in a pandas DataFrame containing ["diagnosis", "site", "age", "sex]
@@ -81,8 +70,8 @@ class ClinicalBase(ABC, Dataset):
 
         # 1) Loads globally all the data for a given pre-processing
         preproc_folders = self._get_preproc_folders
-        folder = preproc_folders[preproc]
-        _root = os.path.join(root, folder)
+        traininger = preproc_folders[preproc]
+        _root = os.path.join(root, traininger)
         df = pd.concat([pd.read_csv(os.path.join(_root, pd_files[self.preproc] % db)) for db in self._studies],
                        ignore_index=True, sort=False)
         data = [np.load(os.path.join(_root, npy_files[self.preproc] % db), mmap_mode='r')
@@ -166,24 +155,15 @@ class ClinicalBase(ABC, Dataset):
         Should be formatted as:
         /root
             <train_val_test_split.pkl>
-            /cat12vbm
-                [cohort]_t1mri_mwp1_participants.csv
-                [cohort]_t1mri_mwp1_gs-raw_data64.npy
-            /quasi_raw
-                [cohort]_t1mri_quasi_raw_participants.csv
-                [cohort]_t1mri_quasi_raw_data32_1.5mm_skimage.npy
             /skeleton
                 [cohort]_t1mri_skeleton_participants.csv
                 [cohort]_t1mri_skeleton_data32.npy
         """
         is_complete = os.path.isdir(self.root)
         is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
-
-        # TODO: change the formatted names
         dir_files = {
-            #"cat12vbm": ["%s_t1mri_mwp1_participants.csv", "%s_t1mri_mwp1_gs-raw_data64.npy"],
-            #"quasi_raw": ["%s_t1mri_quasi_raw_participants.csv", "%s_t1mri_quasi_raw_data32_1.5mm_skimage.npy"],
-            "morphologist": ["%s_t1mri_skeleton_participants.csv", "%s_t1mri_skeleton_data32.npy"]
+            self._get_preproc_folders[self.preproc]: [self._get_pd_files[self.preproc], 
+                                                      self._get_npy_files[self.preproc]]
         }
 
         for (directory, files) in dir_files.items():
@@ -203,17 +183,15 @@ class ClinicalBase(ABC, Dataset):
         if check_uniqueness:
             assert len(set(_source_keys)) == len(_source_keys), f"Multiple identique identifiers found"
         _target_keys = self.scheme[unique_keys].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
-        mask = _source_keys.isin(_target_keys).values.astype(np.bool)
+        mask = _source_keys.isin(_target_keys).values.astype(bool)
         return mask
 
     def _extract_metadata(self, df: pd.DataFrame):
         """
         :param df: pandas DataFrame
-        :return: TIV and tissue volumes defined by the Neuromorphometrics atlas
+        :return: age, sex and TIV
         """
-        metadata = ["age", "sex", "tiv"] + [k for k in df.keys() if "GM_Vol" in k or "WM_Vol" in k or "CSF_Vol" in k]
-        if len(metadata) != 290:
-            logger.warning(f"Missing meta-data values ({len(metadata)} != 290)")
+        metadata = ["age", "sex", "tiv"]
         assert set(metadata) <= set(df.keys()), "Missing meta-data columns: {}".format(set(metadata) - set(df.keys))
         if df[metadata].isna().sum().sum() > 0:
             logger.warning("NaN values found in meta-data")
@@ -346,7 +324,7 @@ class SCZDataset(ClinicalBase):
 
     @property
     def _studies(self):
-        return ["schizconnect-vip", "bsnip", "cnp", "candi"]
+        return ["schizconnect-vip-prague", "bsnip1", "cnp", "candi"]
 
     @property
     def _train_val_test_scheme(self):
@@ -358,7 +336,7 @@ class SCZDataset(ClinicalBase):
 
     @property
     def _dx_site_mappings(self):
-        return dict(diagnosis={"control": 0, "schizophrenia": 1},
+        return dict(diagnosis={"control": 0, "schizophrenia": 1, "scz": 1},
                     site=self._site_mapping)
 
     def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):
@@ -377,16 +355,19 @@ class SCZDataset(ClinicalBase):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_scz.pkl"))
         super().__init__(root, *args, **kwargs)
 
+    def __str__():
+        return "SCZDataset"
 
-class BipolarDataset(ClinicalBase):
+
+class BDDataset(ClinicalBase):
 
     @property
     def _studies(self):
-        return ["biobd", "bsnip", "cnp", "candi"]
+        return ["biobd", "bsnip1", "cnp", "candi"]
 
     @property
     def _train_val_test_scheme(self):
-        return "train_val_test_test-intra_bip_stratified.pkl"
+        return "train_val_test_test-intra_bd_stratified.pkl"
 
     @property
     def _unique_keys(self):
@@ -394,7 +375,7 @@ class BipolarDataset(ClinicalBase):
 
     @property
     def _dx_site_mappings(self):
-        return dict(diagnosis={"control": 0, "bipolar": 1, "bipolar disorder": 1, "psychotic bipolar disorder": 1},
+        return dict(diagnosis={"control": 0, "bipolar": 1, "bipolar disorder": 1, "psychotic bipolar disorder": 1, "bd":1},
                     site=self._site_mapping)
 
     def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):
@@ -407,11 +388,14 @@ class BipolarDataset(ClinicalBase):
         return super()._extract_mask(df, unique_keys, check_uniqueness=check_uniqueness)
 
     def _check_integrity(self):
-        return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_bip.pkl"))
+        return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_bd.pkl"))
 
     def __init__(self, root: str, *args, **kwargs):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_bip.pkl"))
         super().__init__(root, *args, **kwargs)
+    
+    def __str__(self):
+        return "BDDataset"
 
 
 class ASDDataset(ClinicalBase):
@@ -430,7 +414,7 @@ class ASDDataset(ClinicalBase):
 
     @property
     def _dx_site_mappings(self):
-        return dict(diagnosis={"control": 0, "autism": 1},
+        return dict(diagnosis={"control": 0, "autism": 1, "asd": 1},
                     site=self._site_mapping)
 
     def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):

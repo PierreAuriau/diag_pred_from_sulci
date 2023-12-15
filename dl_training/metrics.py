@@ -1,12 +1,4 @@
 # -*- coding: utf-8 -*-
-##########################################################################
-# NSAp - Copyright (C) CEA, 2019
-# Distributed under the terms of the CeCILL-B license, as published by
-# the CEA-CNRS-INRIA. Refer to the LICENSE file or to
-# http://www.cecill.info/licences/Licence_CeCILL-B_V1-en.html
-# for details.
-##########################################################################
-
 """
 Define common metrics.
 """
@@ -43,19 +35,25 @@ def average_precision_score(y_pred, y):
 def roc_auc(y_pred, y):
     if isinstance(y, torch.Tensor):
         y = y.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
     if len(y_pred.shape) == 2 and y_pred.shape[1] == 2:
-        return roc_auc_score(y, y_pred[:,1].detach().cpu().numpy())
+        return roc_auc_score(y, y_pred[:,1])
     elif len(y_pred.shape) < 2:
-        return roc_auc_score(y, y_pred.detach().cpu().numpy())
+        return roc_auc_score(y, y_pred)
     else:
         raise ValueError('Invalid shape for y_pred: {}'.format(y_pred.shape))
 
-def balanced_accuracy(y_pred, y):
+def balanced_accuracy(y_pred, y, threshold=0):
+    if isinstance(y, torch.Tensor):
+        y = y.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
     if len(y_pred.shape) == 1:
-        y_pred = (y_pred > 0)
+        y_pred = (y_pred > threshold)
     if len(y_pred.shape) == 2:
-        y_pred = y_pred.data.max(dim=1)[1] # get the indices of the maximum
-    return balanced_accuracy_score(y.detach().cpu().numpy(), y_pred.detach().cpu().numpy())
+        y_pred = y_pred.argmax(axis=1) # get the indices of the maximum
+    return balanced_accuracy_score(y, y_pred)
 
 # True Positive Rate = TP/P (also called Recall)
 def sensitivity(y_pred, y, positive_label=1):

@@ -5,15 +5,16 @@ import pandas as pd
 import torch
 import logging
 from collections import namedtuple
+from typing import Callable, List, Type, Sequence, Dict
 
 from torchvision.transforms.transforms import Compose
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
 
-from datasets.clinical_multisites import SCZDataset, BipolarDataset, ASDDataset
+from datasets.clinical_multisites import SCZDataset, BDDataset, ASDDataset
 from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
-    ContrastiveBipolarDataset, ContrastiveASDDataset
-from preprocessing.transforms import Padding, Crop, Normalize, Binarize
-from augmentation.da_module import DA_Module
+    ContrastiveBDDataset, ContrastiveASDDataset
+from img_processing.preprocessing import Padding, Crop, Normalize, Binarize
+from img_processing.da_module import DAModule
 
 logger = logging.getLogger()
 SetItem = namedtuple("SetItem", ["test", "train", "validation"], defaults=(None,) * 3)
@@ -23,7 +24,7 @@ DataItem = namedtuple("DataItem", ["inputs", "outputs", "labels"])
 class ClinicalDataManager(object):
 
     def __init__(self, root: str, preproc: str, db: str, labels: List[str] = None, sampler: str = "random",
-                 batch_size: int = 1, number_of_folds: int = None, mask=None,
+                 batch_size: int = 1, number_of_trainings: int = None, mask=None,
                  model: str = "base", data_augmentation: List[str] = None,
                  device: str = "cuda", **dataloader_kwargs):
 
@@ -34,7 +35,7 @@ class ClinicalDataManager(object):
         self.dataset = dict()
         self.labels = labels or []
         self.mask = mask
-        self.number_of_folds = number_of_folds
+        self.number_of_trainings = number_of_trainings
         self.sampler = sampler
         self.batch_size = batch_size
         self.device = device
@@ -51,9 +52,9 @@ class ClinicalDataManager(object):
                 dataset_cls = SCZDataset
         elif db == "bd":
             if model == "SupCon":
-                dataset_cls = ContrastiveBipolarDataset
+                dataset_cls = ContrastiveBDDataset
             else:
-                dataset_cls = BipolarDataset
+                dataset_cls = BDDataset
         elif db == "asd":
             if model == "SupCon":
                 dataset_cls = ContrastiveASDDataset
@@ -62,10 +63,10 @@ class ClinicalDataManager(object):
         logger.debug(f"Dataset CLS : {dataset_cls}")
         self.dataset["train"] = [dataset_cls(root, preproc=preproc, split="train",
                                              transforms=input_transforms, target=labels)
-                                 for _ in range(self.number_of_folds)]
+                                 for _ in range(self.number_of_trainings)]
         self.dataset["validation"] = [dataset_cls(root, preproc=preproc, split="val",
                                                   transforms=input_transforms, target=labels)
-                                      for _ in range(self.number_of_folds)]
+                                      for _ in range(self.number_of_trainings)]
         self.dataset["test"] = dataset_cls(root, preproc=preproc, split="test",
                                            transforms=input_transforms, target=labels)
         self.dataset["test_intra"] = dataset_cls(root, preproc=preproc, split="test_intra",
@@ -89,7 +90,7 @@ class ClinicalDataManager(object):
         return DataItem(**data)
 
     def get_dataloader(self, train=False, validation=False,
-                       test=False, test_intra=False, fold_index=None):
+                       test=False, test_intra=False, training_index=None):
 
         assert test + test_intra <= 1, "Only one tests accepted"
         _test, _train, _validation, sampler = (None, None, None, None)
@@ -102,27 +103,27 @@ class ClinicalDataManager(object):
             tests_to_return.append("test_intra")
         test_loaders = dict()
         for t in tests_to_return:
-            dataset = self.dataset[t] if t != "validation" else self.dataset[t][fold_index]
+            dataset = self.dataset[t] if t != "validation" else self.dataset[t][training_index]
             drop_last = True if len(dataset) % self.batch_size == 1 else False
             if drop_last and t != "validation":
                 logger.warning(f"The last subject will not be tested ! "
                                f"Change the batch size ({self.batch_size}) to test on all subject ({len(dataset)})")
             test_loaders[t] = DataLoader(dataset, batch_size=self.batch_size,
-                                         collate_fn=OpenBHBDataManager.collate_fn, drop_last=drop_last,
+                                         collate_fn=self.collate_fn, drop_last=drop_last,
                                          **self.dataloader_kwargs)
         if "test_intra" in test_loaders:
             assert "test" not in test_loaders
             test_loaders["test"] = test_loaders.pop("test_intra")
         if train:
             if self.sampler == "random":
-                sampler = RandomSampler(self.dataset["train"][fold_index])
+                sampler = RandomSampler(self.dataset["train"][training_index])
             elif self.sampler == "sequential":
-                sampler = SequentialSampler(self.dataset["train"][fold_index])
-            dataset = self.dataset["train"][fold_index]
+                sampler = SequentialSampler(self.dataset["train"][training_index])
+            dataset = self.dataset["train"][training_index]
             drop_last = True if len(dataset) % self.batch_size == 1 else False
             _train = DataLoader(
                 dataset, batch_size=self.batch_size, sampler=sampler,
-                collate_fn=OpenBHBDataManager.collate_fn, drop_last=drop_last,
+                collate_fn=self.collate_fn, drop_last=drop_last,
                 **self.dataloader_kwargs)
 
         return SetItem(train=_train, **test_loaders)
@@ -141,14 +142,14 @@ class ClinicalDataManager(object):
             raise ValueError("Unknown preproc: %s" % preproc)
         if model == "SupCon":
             if data_augmentation is None:
-                input_transforms.transforms.append(DA_Module())
+                input_transforms.transforms.append(DAModule())
                 logger.info("Data augmentation is set to the standard DA_model")
             else:
-                input_transforms.transforms.append(DA_Module(transforms=data_augmentation))
+                input_transforms.transforms.append(DAModule(transforms=data_augmentation))
         return input_transforms
 
-    def get_nb_folds(self):
-        return self.number_of_folds
+    def get_nb_trainings(self):
+        return self.number_of_trainings
 
     def __str__(self):
         return "ClinicalDataManager"

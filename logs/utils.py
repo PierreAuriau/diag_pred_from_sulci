@@ -38,8 +38,8 @@ class ConsoleFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def get_chk_name(name, fold, epoch):
-    return "{name}_{fold}_epoch_{epoch}.pth".format(name=name or "model", fold=fold, epoch=epoch)
+def get_chk_name(name, training, epoch):
+    return "{name}_{training}_epoch_{epoch}.pth".format(name=name or "model", training=training, epoch=epoch)
 
 
 def get_pickle_obj(path):
@@ -96,7 +96,7 @@ def save_hyperparameters(args):
         json.dump(vars(args), f)
 
 
-def checkpoint(model, epoch, fold, outdir, name=None, optimizer=None, scheduler=None, state_dict=False,
+def checkpoint(model, epoch, training, outdir, name=None, optimizer=None, scheduler=None, state_dict=False,
                **kwargs):
     """ Save the weights of a given model.
 
@@ -106,10 +106,10 @@ def checkpoint(model, epoch, fold, outdir, name=None, optimizer=None, scheduler=
         the network model.
     epoch: int
         the epoch index.
-    fold: int
-        the fold index.
+    training: int
+        the training index.
     outdir: str
-        the destination directory where a 'model_<fold>_epoch_<epoch>.pth'
+        the destination directory where a 'model_<training>_epoch_<epoch>.pth'
         file will be generated.
     optimizer: Optimizer, default None
         the network optimizer (save the hyperparameters, etc.).
@@ -119,7 +119,7 @@ def checkpoint(model, epoch, fold, outdir, name=None, optimizer=None, scheduler=
         others parameters to save.
     """
 
-    name = get_chk_name(name, fold, epoch)
+    name = get_chk_name(name, training, epoch)
     outfile = os.path.join(outdir, name)
     if state_dict:
         if optimizer is not None:
@@ -127,7 +127,7 @@ def checkpoint(model, epoch, fold, outdir, name=None, optimizer=None, scheduler=
         if scheduler is not None:
             kwargs.update(scheduler=scheduler)
         torch.save({
-            "fold": fold,
+            "training": training,
             "epoch": epoch,
             "model": model,
             **kwargs}, outfile)
@@ -137,7 +137,7 @@ def checkpoint(model, epoch, fold, outdir, name=None, optimizer=None, scheduler=
         if scheduler is not None:
             kwargs.update(scheduler=scheduler.state_dict())
         torch.save({
-            "fold": fold,
+            "training": training,
             "epoch": epoch,
             "model": model,
             **kwargs}, outfile)

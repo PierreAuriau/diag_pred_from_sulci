@@ -122,7 +122,7 @@ class Base(object):
         self.model = self.model.to(self.device)
 
     def training(self, manager, nb_epochs: int, checkpointdir=None,
-                 fold_index=None, scheduler=None, with_validation=True,
+                 training_index=None, scheduler=None, with_validation=True,
                  nb_epochs_per_saving=1, exp_name=None, **kwargs_train):
         """ Train the model.
 
@@ -133,11 +133,11 @@ class Base(object):
         nb_epochs: int, default 100
             the number of epochs.
         checkpointdir: str, default None
-            a destination folder where intermediate architectures/historues will be
+            a destination traininger where intermediate architectures/historues will be
             saved.
-        fold_index: int or [int] default None
-            the index(es) of the fold(s) to use for the training, default use all the
-            available folds.
+        training_index: int or [int] default None
+            the index(es) of the training(s) to use for the training, default use all the
+            available trainings.
         scheduler: torch.optim.lr_scheduler, default None
             a scheduler used to reduce the learning rate.
         with_validation: bool, default True
@@ -159,19 +159,19 @@ class Base(object):
             valid_history = None
         self.logger.info(f"Loss : {self.loss}")
         self.logger.info(f"Optimizer : {self.optimizer}")
-        folds = range(manager.get_nb_folds())
-        if fold_index is not None:
-            if isinstance(fold_index, int):
-                folds = [fold_index]
-            elif isinstance(fold_index, list):
-                folds = fold_index
+        trainings = range(manager.get_nb_trainings())
+        if training_index is not None:
+            if isinstance(training_index, int):
+                trainings = [training_index]
+            elif isinstance(training_index, list):
+                trainings = training_index
         init_optim_state = deepcopy(self.optimizer.state_dict())
         init_model_state = deepcopy(self.model.state_dict())
         scaler = kwargs_train.get("gradscaler")
         if scheduler is not None:
             init_scheduler_state = deepcopy(scheduler.state_dict())
-        for fold in folds:
-            # Initialize everything before optimizing on a new fold
+        for training in trainings:
+            # Initialize everything before optimizing on a new training
             if scaler is not None:
                 kwargs_train["gradscaler"] = GradScaler()
                 self.logger.info("GradScaler activated")
@@ -182,12 +182,12 @@ class Base(object):
             loader = manager.get_dataloader(
                 train=True,
                 validation=True,
-                fold_index=fold)
+                training_index=training)
             min_loss, best_model, best_epoch = None, None, None
             for epoch in range(nb_epochs):
-                loss, values = self.train(loader.train, fold, epoch, **kwargs_train)
+                loss, values = self.train(loader.train, training, epoch, **kwargs_train)
 
-                train_history.log((fold, epoch), loss=loss, **values)
+                train_history.log((training, epoch), loss=loss, **values)
                 train_history.summary()
                 if scheduler is not None:
                     scheduler.step()
@@ -201,24 +201,24 @@ class Base(object):
                     checkpoint(
                         model=self.model.state_dict(),
                         epoch=epoch,
-                        fold=fold,
+                        training=training,
                         outdir=checkpointdir,
                         name=exp_name,
                         optimizer=self.optimizer)
                     train_history.save(
                         outdir=checkpointdir,
                         epoch=epoch,
-                        fold=fold)
+                        training=training)
                 if with_validation:
                     y_pred, y_true, X, loss, values = self.test(loader.validation, **kwargs_train)
-                    valid_history.log((fold, epoch), validation_loss=loss, y_pred=y_pred, y_true=y_true, **values)
+                    valid_history.log((training, epoch), validation_loss=loss, y_pred=y_pred, y_true=y_true, **values)
                     valid_history.summary()
                     if checkpointdir is not None and (epoch % nb_epochs_per_saving == 0 or epoch == nb_epochs-1) \
                             and epoch > 0:
                         valid_history.save(
                             outdir=checkpointdir,
                             epoch=epoch,
-                            fold=fold)
+                            training=training)
                 if min_loss is None or loss < min_loss:
                     min_loss = loss
                     best_epoch = epoch
@@ -227,20 +227,20 @@ class Base(object):
                 checkpoint(
                     model=best_model,
                     epoch=best_epoch,
-                    fold=fold,
+                    training=training,
                     outdir=checkpointdir,
                     name=exp_name,
                     state_dict=True
                 )
         return train_history, valid_history
 
-    def train(self, loader, fold=None, epoch=None, **kwargs):
+    def train(self, loader, training=None, epoch=None, **kwargs):
         """ Train the model on the trained data.
 
         Parameters
         ----------
         loader: a pytorch Dataloader
-        fold: number of the fold
+        training: number of the training
         epoch: number of the epoch
 
         Returns
@@ -253,7 +253,7 @@ class Base(object):
         scaler = kwargs.get("gradscaler")
         self.model.train()
         nb_batch = len(loader)
-        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({fold},{epoch})")
+        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({training},{epoch})")
 
         values = {}
         iteration = 0

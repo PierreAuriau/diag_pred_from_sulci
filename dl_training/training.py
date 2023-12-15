@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import nibabel
 import os
 import numpy as np
 import torch
+import torch.nn as nn
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
@@ -22,9 +22,10 @@ class BaseTrainer:
     def __init__(self, args):
         self.args = args
         self.net = BaseTrainer.build_network(args.net, args.model, num_classes=1, in_channels=1)
-        self.manager = BaseTrainer.build_data_manager(args.model, args.pb, args.preproc, args.root,
+        self.manager = BaseTrainer.build_data_manager(model=args.model, pb=args.pb, 
+                                                      preproc=args.preproc, root=args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
-                                                      number_of_folds=args.nb_folds,
+                                                      number_of_trainings=args.nb_trainings,
                                                       data_augmentation=args.data_augmentation,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
@@ -64,7 +65,7 @@ class BaseTrainer:
                                                            checkpointdir=self.args.checkpoint_dir,
                                                            nb_epochs_per_saving=self.args.nb_epochs_per_saving,
                                                            exp_name=self.args.exp_name,
-                                                           fold_index=self.args.folds,
+                                                           training_index=self.args.training_index,
                                                            **kwargs_train)
 
         return train_history, valid_history
@@ -141,3 +142,7 @@ class BaseTrainer:
         logger.debug(f"Datamanager : {_manager_cls}")
         manager = _manager_cls(root, preproc, **kwargs)
         return manager
+    
+    def __str__(self):
+        return "BaseTrainer"
+
