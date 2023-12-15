@@ -14,7 +14,7 @@ logger = logging.getLogger()
 # TODO : change preproc for smoothing / no
 # TODO : save into pickle with numpy instead history
 # TODO : improve tester
-# TODO : remove Litlle hack in Dataset
+# TODO : python script for creating pickles
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

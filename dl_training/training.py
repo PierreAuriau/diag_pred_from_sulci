@@ -8,7 +8,7 @@ import torch.nn as nn
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
-from dl_training.datamanager import ClinicalDataManager
+from datasets.datamanager import ClinicalDataManager
 from dl_training.losses import SupConLoss
 from architectures.alexnet import AlexNet3D_Dropout
 from architectures.resnet import resnet18

@@ -72,7 +72,8 @@ class ClinicalBase(ABC, Dataset):
         preproc_folders = self._get_preproc_folders
         traininger = preproc_folders[preproc]
         _root = os.path.join(root, traininger)
-        df = pd.concat([pd.read_csv(os.path.join(_root, pd_files[self.preproc] % db)) for db in self._studies],
+        df = pd.concat([pd.read_csv(os.path.join(_root, pd_files[self.preproc] % db), dtype=self._id_types) 
+                        for db in self._studies],
                        ignore_index=True, sort=False)
         data = [np.load(os.path.join(_root, npy_files[self.preproc] % db), mmap_mode='r')
                 for db in self._studies]
@@ -144,6 +145,12 @@ class ClinicalBase(ABC, Dataset):
         return {"vbm": "%s_t1mri_mwp1_participants.csv",
                 "quasi_raw": "%s_t1mri_quasi_raw_participants.csv",
                 "skeleton": "%s_t1mri_skeleton_participants.csv"}
+    @property
+    def _id_types(self):
+        return {"participant_id": str,
+                "session": int,
+                "acq": int,
+                "run": int}
 
     @property
     def _get_preproc_folders(self) -> Dict[str, str]:
@@ -184,6 +191,7 @@ class ClinicalBase(ABC, Dataset):
             assert len(set(_source_keys)) == len(_source_keys), f"Multiple identique identifiers found"
         _target_keys = self.scheme[unique_keys].apply(lambda row: '_'.join(row.values.astype(str)), axis=1)
         mask = _source_keys.isin(_target_keys).values.astype(bool)
+        logger.debug(f"Extract mask: len: {np.count_nonzero(mask)}")
         return mask
 
     def _extract_metadata(self, df: pd.DataFrame):
@@ -339,15 +347,6 @@ class SCZDataset(ClinicalBase):
         return dict(diagnosis={"control": 0, "schizophrenia": 1, "scz": 1},
                     site=self._site_mapping)
 
-    def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):
-        # Little hack
-        df = df.copy()
-        df.loc[df['session'].isna(), 'session'] = 1
-        df.loc[df['session'].isin(['v1', 'V1']), 'session'] = 1
-        df["session"] = df["session"].astype(int)
-        self.scheme['session'] = self.scheme['session'].astype(int)
-        return super()._extract_mask(df, unique_keys, check_uniqueness=check_uniqueness)
-
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_scz.pkl"))
 
@@ -355,7 +354,7 @@ class SCZDataset(ClinicalBase):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_scz.pkl"))
         super().__init__(root, *args, **kwargs)
 
-    def __str__():
+    def __str__(self):
         return "SCZDataset"
 
 
@@ -377,15 +376,6 @@ class BDDataset(ClinicalBase):
     def _dx_site_mappings(self):
         return dict(diagnosis={"control": 0, "bipolar": 1, "bipolar disorder": 1, "psychotic bipolar disorder": 1, "bd":1},
                     site=self._site_mapping)
-
-    def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):
-        # Little hack
-        df = df.copy()
-        df.loc[df['session'].isna(), 'session'] = 1
-        df.loc[df['session'].isin(['v1', 'V1']), 'session'] = 1
-        df["session"] = df["session"].astype(int)
-        self.scheme['session'] = self.scheme['session'].astype(int)
-        return super()._extract_mask(df, unique_keys, check_uniqueness=check_uniqueness)
 
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_bd.pkl"))
@@ -417,22 +407,12 @@ class ASDDataset(ClinicalBase):
         return dict(diagnosis={"control": 0, "autism": 1, "asd": 1},
                     site=self._site_mapping)
 
-    def _extract_mask(self, df: pd.DataFrame, unique_keys: Sequence[str], check_uniqueness: bool=True):
-        # Little hack
-        df = df.copy()
-        df.loc[df['session'].isna(), 'session'] = 1
-        df.loc[df['session'].isin(['v1', 'V1']), 'session'] = 1
-        df["session"] = df["session"].astype(int)
-        df.loc[df['run'].isna(), 'run'] = 1
-        if df['run'].dtype == np.float:
-            df['run'] = df['run'].astype(int)
-        self.scheme['session'] = self.scheme['session'].astype(int)
-
-        return super()._extract_mask(df, unique_keys, check_uniqueness=check_uniqueness)
-
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_asd.pkl"))
 
     def __init__(self, root: str, *args, **kwargs):
         self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_asd.pkl"))
         super().__init__(root, *args, **kwargs)
+    
+    def __str__(self):
+        return "ASDDataset"
