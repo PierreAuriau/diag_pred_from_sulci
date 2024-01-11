@@ -46,9 +46,9 @@ class ClinicalBase(ABC, Dataset):
         """
         if isinstance(target, str):
             target = [target]
-        assert preproc in ['vbm', 'quasi_raw', 'skeleton'], "Unknown preproc: %s"%preproc
+        assert preproc in ['vbm', 'quasi_raw', 'skeleton'], "Unknown preproc: %s" % preproc
         assert set(target) <= {'diagnosis', 'site'}, "Unknown target: %s" % target
-        assert split in ['train', 'val', 'test', 'test_intra', 'validation'], "Unknown split: %s"%split
+        assert split in ['train', 'val', 'test', 'test_intra', 'validation'], "Unknown split: %s" % split
 
         self.root = root
         self.preproc = preproc
@@ -279,26 +279,17 @@ class ClinicalBase(ABC, Dataset):
         sample_idx = idx - self._cumulative_sizes[dataset_idx - 1] if dataset_idx > 0 else idx
         return dataset_idx, sample_idx
 
-    def transform(self, tf, *args, mask: np.ndarray = None, dtype: Type = np.float32, copy: bool = True, **kwargs):
+    def transform(self, tf, dtype: Type = np.float32, copy: bool = True):
         """
-        :param tf: a Transformer object that implements transform() to by apply on the data
-        NB: the data shape must be preserved after transformation
-        :param *args, **kwargs: arguments to give to the Transformer object
-        :param mask: a 3D or 4D mask given to self.get_data()
+        :param tf: function that transform the data
         :param copy: if True, returns a copy of self whose data have been transformed
         :return: an OpenBHB dataset whose data have been transformed and stored directly in _data_loaded
         """
         this = self
-        if copy: this = self.copy()
-        # Preserves the data shape
-        data_shape = this.shape
-        this_data, _ = this.get_data(mask=mask, dtype=dtype)
-        this._data_loaded = np.zeros(data_shape, dtype=dtype)
-        if mask is None:
-            this._data_loaded = tf.transform(this_data, *args, **kwargs)
-        else:
-            if len(mask.shape) == 3: mask = mask[np.newaxis, :]
-            this._data_loaded[:, mask] = tf.transform(this_data, *args, **kwargs)
+        if copy: 
+            this = self.copy()
+        this_data, _ = this.get_data(mask=None, dtype=dtype)
+        this._data_loaded = tf(this_data).astype(dtype)
         return this
 
     def copy(self):
