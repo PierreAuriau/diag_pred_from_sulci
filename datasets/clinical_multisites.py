@@ -31,12 +31,11 @@ class ClinicalBase(ABC, Dataset):
           * id: pandas DataFrame, each row contains a unique identifier for an image
 
     """
-    def __init__(self, root: str, preproc: str = 'vbm', target: [str, List[str]] = 'diagnosis',
+    def __init__(self, root: str, target: [str, List[str]] = 'diagnosis',
                  split: str = 'train', transforms: Callable[[np.ndarray], np.ndarray] = None,
                  load_data: bool = False):
         """
         :param root: str, path to the root directory containing the different .npy and .csv files
-        :param preproc: str, must be either VBM ('vbm'), Quasi-Raw ('quasi_raw') or Skeleton ('skeleton')
         :param target: str or [str], either 'dx' or 'site'.
         :param split: str, either 'train', 'val', 'test' (inter) or (eventually) 'test_intra'
         :param transforms (callable, optional): A function/transform that takes in
@@ -46,12 +45,10 @@ class ClinicalBase(ABC, Dataset):
         """
         if isinstance(target, str):
             target = [target]
-        assert preproc in ['vbm', 'quasi_raw', 'skeleton'], "Unknown preproc: %s" % preproc
         assert set(target) <= {'diagnosis', 'site'}, "Unknown target: %s" % target
         assert split in ['train', 'val', 'test', 'test_intra', 'validation'], "Unknown split: %s" % split
 
         self.root = root
-        self.preproc = preproc
         self.split = split
         self.target_name = target
         self.transforms = transforms
@@ -64,18 +61,13 @@ class ClinicalBase(ABC, Dataset):
 
         self.scheme = self.load_pickle(os.path.join(
             root, self._train_val_test_scheme))[self.split]
-
-        npy_files = self._get_npy_files
-        pd_files = self._get_pd_files
-
+        
         # 1) Loads globally all the data for a given pre-processing
-        preproc_folders = self._get_preproc_folders
-        traininger = preproc_folders[preproc]
-        _root = os.path.join(root, traininger)
-        df = pd.concat([pd.read_csv(os.path.join(_root, pd_files[self.preproc] % db), dtype=self._id_types) 
+        _root = os.path.join(root, self._get_folder)
+        df = pd.concat([pd.read_csv(os.path.join(_root, self._get_pd_files % db), dtype=self._id_types) 
                         for db in self._studies],
                        ignore_index=True, sort=False)
-        data = [np.load(os.path.join(_root, npy_files[self.preproc] % db), mmap_mode='r')
+        data = [np.load(os.path.join(_root, self._get_npy_files % db), mmap_mode='r')
                 for db in self._studies]
         cumulative_sizes = np.cumsum([len(db) for db in data])
 
@@ -136,15 +128,12 @@ class ClinicalBase(ABC, Dataset):
 
     @property
     def _get_npy_files(self) -> Dict[str, str]:
-        return {"vbm": "%s_t1mri_mwp1_gs-raw_data64.npy",
-                "quasi_raw": "%s_t1mri_quasi_raw_data32_1.5mm_skimage.npy",
-                "skeleton": "%s_t1mri_skeleton_data32.npy"}
+        return "%s_t1mri_skeleton_data32.npy"
 
     @property
     def _get_pd_files(self) -> Dict[str, str]:
-        return {"vbm": "%s_t1mri_mwp1_participants.csv",
-                "quasi_raw": "%s_t1mri_quasi_raw_participants.csv",
-                "skeleton": "%s_t1mri_skeleton_participants.csv"}
+        return "%s_t1mri_skeleton_participants.csv"
+    
     @property
     def _id_types(self):
         return {"participant_id": str,
@@ -153,8 +142,8 @@ class ClinicalBase(ABC, Dataset):
                 "run": int}
 
     @property
-    def _get_preproc_folders(self) -> Dict[str, str]:
-        return {"vbm": "cat12vbm", "quasi_raw": "quasi_raw", "skeleton": "morphologist"}
+    def _get_folder(self) -> Dict[str, str]:
+        return "morphologist"
 
     def _check_integrity(self):
         """
@@ -168,10 +157,7 @@ class ClinicalBase(ABC, Dataset):
         """
         is_complete = os.path.isdir(self.root)
         is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
-        dir_files = {
-            self._get_preproc_folders[self.preproc]: [self._get_pd_files[self.preproc], 
-                                                      self._get_npy_files[self.preproc]]
-        }
+        dir_files = {self._get_folder: [self._get_pd_files, self._get_npy_files]}
 
         for (directory, files) in dir_files.items():
             for file in files:
@@ -297,7 +283,7 @@ class ClinicalBase(ABC, Dataset):
         :return: a deep copy of this
         """
 
-        this = self.__class__(self.root, self.preproc, self.target_name,
+        this = self.__class__(self.root, self.target_name,
                               self.split, self.transforms)
         return this
 
@@ -316,7 +302,7 @@ class ClinicalBase(ABC, Dataset):
         return len(self.target)
 
     def __str__(self):
-        return "%s-%s-%s" % (type(self).__name__, self.preproc, self.split)
+        return "%s-%s-%s" % (type(self).__name__, self.split)
 
 
 class SCZDataset(ClinicalBase):
