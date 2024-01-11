@@ -203,55 +203,41 @@ class ClinicalBase(ABC, Dataset):
             pkl = pickle.load(f)
         return pkl
 
-    def get_data(self, indices: Sequence[int] = None, mask: np.ndarray = None, dtype: Type = np.float32):
+    def get_data(self, indices: Sequence[int] = None, dtype: Type = np.float32):
         """
         Loads all (or selected ones) data in memory and returns a big numpy array X_data with y_data
         The input/target transforms are ignored.
         Warning: this can be memory-consuming (~10GB if all data are loaded)
         :param indices : (Optional) list of indices to load
-        :param mask : (Optional) binary mask to apply to the data. Each 3D volume is transformed into a
-        vector. Can be 3D mask or 4D (channel + img)
         :param dtype : (Optional) the final type of data returned (e.g np.float32)
         :return (np.ndarray, np.ndarray), a tuple (X, y)
         """
         tf = self.transforms
         self.transforms = None
-        if mask is not None:
-            assert len(mask.shape) in [3, 4], "Mask must be 3D or 4D (current shape is {})".format(mask.shape)
-            if len(mask.shape) == 3:
-                # adds the channel dimension
-                mask = mask[np.newaxis, :]
         if indices is None:
-            nbytes = np.product(self.shape) if mask is None else mask.sum() * len(self)
-            print("Dataset size to load (shape {}): {:.2f} GB".format(self.shape, nbytes*np.dtype(dtype).itemsize/
+            nbytes = np.product(self.shape)
+            logger.info("Dataset size to load (shape {}): {:.2f} GB".format(self.shape, nbytes*np.dtype(dtype).itemsize/
                                                                       (1024*1024*1024)), flush=True)
 
             if self._data_loaded is not None:
-                data = self._data_loaded[:, mask] if mask is not None else self._data_loaded.copy()
+                data = self._data_loaded.copy()
             else:
-                if mask is None:
-                    data = np.zeros(self.shape, dtype=dtype)
-                else:
-                    data = np.zeros((len(self), mask.sum()), dtype=dtype)
+                data = np.zeros(self.shape, dtype=dtype)
                 for i in range(len(self)):
-                    data[i] = self[i][0][mask] if mask is not None else self[i][0]
+                    data[i] = self[i][0]
             self.transforms = tf
             return data, np.copy(self.target)
         else:
-            nbytes = np.product(self.shape[1:]) * len(indices) if mask is None else mask.sum() * len(indices)
-            print("Dataset size to load (shape {}): {:.2f} GB".format((len(indices),) + self.shape[1:],
+            nbytes = np.product(self.shape[1:]) * len(indices)
+            logger.info("Dataset size to load (shape {}): {:.2f} GB".format((len(indices),) + self.shape[1:],
                                                                      nbytes*np.dtype(dtype).itemsize/
                                                                       (1024*1024*1024)), flush=True)
-
             if self._data_loaded is not None:
-                data = self._data_loaded[indices, mask] if mask is not None else self._data_loaded[indices]
+                data = self._data_loaded[indices]
             else:
-                if mask is None:
-                    data = np.zeros((len(indices), *self.shape[1:]), dtype=dtype)
-                else:
-                    data = np.zeros((len(indices), mask.sum()), dtype=dtype)
+                data = np.zeros((len(indices), *self.shape[1:]), dtype=dtype)
                 for i, idx in enumerate(indices):
-                    data[i] = self[idx][0][mask] if mask is not None else self[idx][0]
+                    data[i] = self[idx][0]
             self.transforms = tf
             return data.astype(dtype), self.target[indices]
 
@@ -274,7 +260,7 @@ class ClinicalBase(ABC, Dataset):
         this = self
         if copy: 
             this = self.copy()
-        this_data, _ = this.get_data(mask=None, dtype=dtype)
+        this_data, _ = this.get_data(dtype=dtype)
         this._data_loaded = tf(this_data).astype(dtype)
         return this
 
