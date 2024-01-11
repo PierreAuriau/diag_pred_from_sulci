@@ -112,15 +112,16 @@ class Padding(object):
         """
         orig_shape = arr.shape
         padding = []
-        for orig_i, final_i in zip(orig_shape, self.shape):
+        cnt = len(orig_shape) - len(self.shape)
+        for _ in range(cnt):
+            padding.append([0, 0])
+        for orig_i, final_i in zip(orig_shape[cnt:], self.shape):
             shape_i = final_i - orig_i
             half_shape_i = shape_i // 2
             if shape_i % 2 == 0:
                 padding.append([half_shape_i, half_shape_i])
             else:
                 padding.append([half_shape_i, half_shape_i + 1])
-        for cnt in range(len(arr.shape) - len(padding)):
-            padding.append([0, 0])
         fill_arr = np.pad(arr, padding, **self.kwargs)
         return fill_arr
 
