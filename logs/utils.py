@@ -38,8 +38,8 @@ class ConsoleFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def get_chk_name(name, training, epoch):
-    return "{name}_{training}_epoch_{epoch}.pth".format(name=name or "model", training=training, epoch=epoch)
+def get_chk_name(exp_name, run, epoch):
+    return f"exp-{exp_name}_run-{run}_ep-{epoch}.pth"
 
 
 def get_pickle_obj(path):
@@ -92,12 +92,11 @@ def setup_logging(level="info", logfile=None):
 
 
 def save_hyperparameters(args):
-    with open(os.path.join(args.checkpoint_dir, f"{args.exp_name}_hyperparameters.json"), "w") as f:
+    with open(os.path.join(args.checkpoint_dir, f"exp-{args.exp_name}_hyperparameters.json"), "w") as f:
         json.dump(vars(args), f)
 
 
-def checkpoint(model, epoch, training, outdir, name=None, optimizer=None, scheduler=None, state_dict=False,
-               **kwargs):
+def checkpoint(model, epoch, run, outdir, name=None, **kwargs):
     """ Save the weights of a given model.
 
     Parameters
@@ -106,10 +105,10 @@ def checkpoint(model, epoch, training, outdir, name=None, optimizer=None, schedu
         the network model.
     epoch: int
         the epoch index.
-    training: int
-        the training index.
+    run: int
+        the run index.
     outdir: str
-        the destination directory where a 'model_<training>_epoch_<epoch>.pth'
+        the destination directory where a 'model_<run>_epoch_<epoch>.pth'
         file will be generated.
     optimizer: Optimizer, default None
         the network optimizer (save the hyperparameters, etc.).
@@ -119,28 +118,13 @@ def checkpoint(model, epoch, training, outdir, name=None, optimizer=None, schedu
         others parameters to save.
     """
 
-    name = get_chk_name(name, training, epoch)
+    name = get_chk_name(name, run, epoch)
     outfile = os.path.join(outdir, name)
-    if state_dict:
-        if optimizer is not None:
-            kwargs.update(optimizer=optimizer)
-        if scheduler is not None:
-            kwargs.update(scheduler=scheduler)
-        torch.save({
-            "training": training,
-            "epoch": epoch,
-            "model": model,
-            **kwargs}, outfile)
-    else:
-        if optimizer is not None:
-            kwargs.update(optimizer=optimizer.state_dict())
-        if scheduler is not None:
-            kwargs.update(scheduler=scheduler.state_dict())
-        torch.save({
-            "training": training,
-            "epoch": epoch,
-            "model": model,
-            **kwargs}, outfile)
+    torch.save({
+        "run": run,
+        "epoch": epoch,
+        "model": model,
+        **kwargs}, outfile)
     return outfile
 
 
