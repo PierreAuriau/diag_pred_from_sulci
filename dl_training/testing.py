@@ -15,54 +15,55 @@ class BaseTester:
 
     def __init__(self, args):
         self.args = args
-        self.net = BaseTrainer.build_network(args.net, args.model, num_classes=1, in_channels=1)
+        self.net = self.build_network(num_classes=1, in_channels=1)
         self.manager = BaseTrainer.build_data_manager(model=args.model, pb=args.pb, preproc=args.preproc, root=args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
-                                                      number_of_trainings=args.nb_trainings,
+                                                      nb_runs=args.nb_runs,
                                                       data_augmentation=args.data_augmentation,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
         self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
-        self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
-        self.kwargs_test = dict()
+        self.metrics = self.build_metrics()
 
-        if self.args.pretrained_path and self.manager.number_of_trainings > 1:
-            logger.warning('Several trainings found while a unique pretrained path is set!')
-
-    def get_trainings_to_test(self):
-        if self.args.training_index is not None and len(self.args.training_index) > 0:
-            trainings = self.args.training_index
+    def get_runs_to_test(self):
+        if self.args.runs is not None and len(self.args.runs) > 0:
+            runs = self.args.runs
         else:
-            trainings = list(range(self.args.nb_trainings))
-        return trainings
+            runs = list(range(self.args.nb_runs))
+        return runs
 
     def get_epochs_to_test(self):
         # Get the last point and tests it, for each training
-        epochs_tested = [[self.args.nb_epochs - 1] for _ in range(self.args.nb_trainings)]
+        epochs_tested = [[self.args.nb_epochs - 1] for _ in range(self.args.nb_runs)]
         return epochs_tested
+    
+    def build_network(self, **kwargs):
+        return BaseTrainer.build_network(name=self.args.net, model=self.args.model, **kwargs)
+    
+    def build_metrics(self):
+        return BaseTrainer.build_metrics(self.args.model)
 
     def run(self):
         epochs_tested = self.get_epochs_to_test()
-        trainings_to_test = self.get_trainings_to_test()
-        for training in trainings_to_test:
-            tests = ["", "Intra_"]
-            for epoch in epochs_tested[training]:
-                pretrained_path = self.args.pretrained_path or \
-                                  os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, training, epoch))
+        runs_to_test = self.get_runs_to_test()
+        for run in runs_to_test:
+            tests = ["internal", "external"]
+            for epoch in epochs_tested[run]:
+                pretrained_path = os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, run, epoch))
                 logger.debug(f"Pretrained path : {pretrained_path}")
                 for t in tests:
                     if self.args.outfile_name is None:
-                        outfile = "%s%s" % (t, self.args.exp_name)
+                        outfile = f"{t}_exp-{self.args.exp_name}"
                     else:
-                        outfile = "%s%s" % (t, self.args.outfile_name)
-                    exp_name = outfile + "_training{}_epoch{}".format(training, epoch)
-                    loader = self.manager.get_dataloader(test=(t == ""),
-                                                         test_intra=(t != ""),
-                                                         training_index=training)
+                        outfile = f"{t}_{self.args.outfile_name}"
+                    exp_name = outfile + f"_run-{run}_ep-{epoch}"
+                    loader = self.manager.get_dataloader(test=(t == "external"),
+                                                         test_intra=(t == "internal"),
+                                                         run=run)
                     model = Base(model=self.net, loss=self.loss,
                                  metrics=self.metrics,
                                  pretrained=pretrained_path,
                                  use_cuda=self.args.cuda)
-                    model.testing(loader.test, saving_dir=self.args.checkpoint_dir, exp_name=exp_name,
-                                  **self.kwargs_test)
+                    model.testing(loader.test, saving_dir=self.args.checkpoint_dir, exp_name=exp_name)
+
