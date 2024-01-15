@@ -5,14 +5,16 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+from collections import OrderedDict
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
 from datasets.datamanager import ClinicalDataManager
 from dl_training.losses import SupConLoss
-from architectures.alexnet import AlexNet3D_Dropout
+from architectures.alexnet import alexnet
 from architectures.resnet import resnet18
 from architectures.densenet import densenet121
+from architectures.mlp import MLP
 
 logger = logging.getLogger()
 
@@ -25,13 +27,13 @@ class BaseTrainer:
         self.manager = BaseTrainer.build_data_manager(model=args.model, pb=args.pb, 
                                                       preproc=args.preproc, root=args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
-                                                      number_of_trainings=args.nb_trainings,
+                                                      nb_runs=args.nb_runs,
                                                       data_augmentation=args.data_augmentation,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
         self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda, temperature=args.temperature)
-        self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
+        self.metrics = BaseTrainer.build_metrics(args.model)
 
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.scheduler = self.build_scheduler(args.step_size_scheduler, args.gamma_scheduler)
@@ -43,7 +45,6 @@ class BaseTrainer:
 
         self.model = model_cls(model=self.net,
                                metrics=self.metrics,
-                               pretrained=args.pretrained_path,
                                use_cuda=args.cuda,
                                loss=self.loss,
                                optimizer=self.optimizer)
@@ -65,7 +66,7 @@ class BaseTrainer:
                                                            checkpointdir=self.args.checkpoint_dir,
                                                            nb_epochs_per_saving=self.args.nb_epochs_per_saving,
                                                            exp_name=self.args.exp_name,
-                                                           training_index=self.args.training_index,
+                                                           runs=self.args.runs,
                                                            **kwargs_train)
 
         return train_history, valid_history
@@ -87,9 +88,8 @@ class BaseTrainer:
             raise NotImplementedError(f"Wrong step size scheduler : {step_size}")
 
     @staticmethod
-    def build_metrics(pb, model):
+    def build_metrics(model):
         if model == "SupCon":
-            # FIXME : metrics for SupCon
             metrics = ["accuracy"]
         else:
             metrics = ["balanced_accuracy", "roc_auc"]
@@ -111,27 +111,28 @@ class BaseTrainer:
 
     @staticmethod
     def build_network(name, model, **kwargs):
-        # one output for BCE loss and L1 loss. Last layers removed for self-supervision
+        # one output for BCE loss and L1 loss
         num_classes = kwargs.pop("num_classes", 1)
-        out_block = kwargs.pop("out_block", None)
-        logger.debug(f"Out block of net : {out_block}")
         logger.debug(f"Num classes for net : {num_classes}")
-        if out_block is None and model in ["SimCLR", "SupCon", "y-aware"]:
-            out_block = "simCLR"
-            logger.info(f"For contrastive learning, the outblock of the net is set to : '{out_block}'")
         if name == "resnet18":
-            net = resnet18(num_classes=num_classes, out_block=out_block, **kwargs)
+            n_embedding = kwargs.pop("n_embedding", 512)
+            net = resnet18(n_embedding=n_embedding, **kwargs)
         elif name == "densenet121":
-            net = densenet121(num_classes=num_classes, out_block=out_block, **kwargs)
-        elif name == "alexnet":  # AlexNet 3D version derived from Abrol et al., 2021
-            if model == "SupCon":
-                raise NotImplementedError("AlexNet not implemented for contrastive learning")
-            else:
-                net = AlexNet3D_Dropout(num_classes=num_classes)
+            n_embedding = kwargs.pop("n_embedding", 512)
+            net = densenet121(n_embedding=n_embedding, **kwargs)
+        elif name == "alexnet":
+            n_embedding = kwargs.pop("n_embedding", 128) 
+            net = alexnet(n_embedding=n_embedding, **kwargs)
         else:
             raise ValueError('Unknown network %s' % name)
-        return net
-
+        
+        if model == "Supcon":
+            return nn.Sequential(OrderedDict([("encoder", net),
+                                              ("projector", MLP((n_embedding, 512), 128))]))
+        else:
+            return nn.Sequential(OrderedDict([("encoder", net),
+                                              ("classifier", nn.Sequential(nn.Linear(n_embedding, num_classes), nn.Flatten(0, -1)))]))
+    
     @staticmethod
     def build_data_manager(root, preproc, pb, model, **kwargs):
         kwargs["labels"] = ["diagnosis"]
