@@ -217,7 +217,7 @@ class ClinicalBase(ABC, Dataset):
         if indices is None:
             nbytes = np.product(self.shape)
             logger.info("Dataset size to load (shape {}): {:.2f} GB".format(self.shape, nbytes*np.dtype(dtype).itemsize/
-                                                                      (1024*1024*1024)), flush=True)
+                                                                      (1024*1024*1024)))
 
             if self._data_loaded is not None:
                 data = self._data_loaded.copy()
@@ -231,7 +231,7 @@ class ClinicalBase(ABC, Dataset):
             nbytes = np.product(self.shape[1:]) * len(indices)
             logger.info("Dataset size to load (shape {}): {:.2f} GB".format((len(indices),) + self.shape[1:],
                                                                      nbytes*np.dtype(dtype).itemsize/
-                                                                      (1024*1024*1024)), flush=True)
+                                                                      (1024*1024*1024)))
             if self._data_loaded is not None:
                 data = self._data_loaded[indices]
             else:
