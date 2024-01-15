@@ -3,24 +3,24 @@
 Core classes.
 """
 
-# System import
 import os
 import pickle
 from copy import deepcopy
 import subprocess
-# Third party import
+from tqdm import tqdm
+import numpy as np
+import logging
 import torch
 from torch.nn import DataParallel
 from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
-from tqdm import tqdm
-import numpy as np
-import logging
+
 # Package import
-from logs.utils import checkpoint
+from logs.utils import checkpoint, get_chk_name
 from logs.history import History
 import dl_training.metrics as mmetrics
 
+logger = logging.getLogger()
 
 class Base(object):
     """ Class to perform classification.
@@ -53,33 +53,33 @@ class Base(object):
         use_multi_gpu: boolean, default True
             if several GPUs are available, use them during forward/backward pass
         kwargs: dict
-            specify directly a custom 'model', 'optimizer' or 'loss'. Can also
-            be used to set specific optimizer parameters.
+            specify directly a custom 'model', 'optimizer' or 'loss'.
         """
-        self.optimizer = kwargs.get("optimizer")
-        self.logger = logging.getLogger("SMLvsDL")
-        self.loss = kwargs.get("loss")
-        self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.scaler = kwargs.get("gradscaler")
-        for name in ("optimizer", "loss"):
-            if name in kwargs:
-                kwargs.pop(name)
-        if "model" in kwargs:
-            self.model = kwargs.pop("model")
-        if self.optimizer is None:
-            if optimizer_name in dir(torch.optim):
-                self.optimizer = getattr(torch.optim, optimizer_name)(
-                    self.model.parameters(),
-                    lr=learning_rate,
-                    **kwargs)
-            else:
-                raise ValueError("Optimizer '{0}' uknown: check available "
-                                 "optimizer in 'pytorch.optim'.")
+        
+        # Model
+        self.model = kwargs.pop("model")
+        if pretrained is not None:
+            self.load_checkpoint(pretrained)
+        
+        # Loss
+        self.loss = kwargs.pop("loss", None)
         if self.loss is None:
             if loss_name not in dir(torch.nn):
                 raise ValueError("Loss '{0}' uknown: check available loss in "
                                  "'pytorch.nn'.")
             self.loss = getattr(torch.nn, loss_name)()
+        
+        # Optimizer
+        self.optimizer = kwargs.pop("optimizer", None)
+        if self.optimizer is None:
+            if optimizer_name in dir(torch.optim):
+                self.optimizer = getattr(torch.optim, optimizer_name)(
+                    self.model.parameters(),
+                    lr=learning_rate)
+            else:
+                raise ValueError("Optimizer '{0}' uknown: check available optimizer in 'pytorch.optim'.")
+
+        # Metrics
         self.metrics = {}
         for name in (metrics or []):
             if name not in mmetrics.METRICS:
@@ -87,42 +87,17 @@ class Base(object):
                                  "to fill the 'METRICS' factory, or ask for "
                                  "some help!".format(name))
             self.metrics[name] = mmetrics.METRICS[name]
+        # Device
+        self.device = torch.device("cuda" if use_cuda else "cpu")
         if use_cuda and not torch.cuda.is_available():
             raise ValueError("No GPU found: unset 'use_cuda' parameter.")
-        if pretrained is not None:
-            checkpoint = None
-            try:
-                checkpoint = torch.load(pretrained, map_location=lambda storage, loc: storage)
-                self.logger.debug(f"Checkpoint Load : {pretrained}")
-            except BaseException as e:
-                self.logger.error('Impossible to load the checkpoint: %s' % str(e))
-            if checkpoint is not None:
-                if hasattr(checkpoint, "state_dict"):
-                    self.model.load_state_dict(checkpoint.state_dict())
-                    self.logger.debug(f"State Dict Loaded")
-                elif isinstance(checkpoint, dict):
-                    if "model" in checkpoint:
-                        try:
-                            for key in list(checkpoint['model'].keys()):
-                                if key.replace('module.', '') != key:
-                                    checkpoint['model'][key.replace('module.', '')] = checkpoint['model'][key]
-                                    del(checkpoint['model'][key])
-                            unexpected = self.model.load_state_dict(checkpoint["model"], strict=False)
-                            self.logger.info('Model loading info: {}'.format(unexpected))
-                            self.logger.info('Model loaded')
-                        except BaseException as e:
-                            self.logger.error('Error while loading the model\'s weights: %s' % str(e))
-                            raise ValueError("")
-                else:
-                    self.model.load_state_dict(checkpoint)
-
         if use_multi_gpu and torch.cuda.device_count() > 1:
             self.model = DataParallel(self.model)
 
         self.model = self.model.to(self.device)
-
+        
     def training(self, manager, nb_epochs: int, checkpointdir=None,
-                 training_index=None, scheduler=None, with_validation=True,
+                 runs=None, scheduler=None, with_validation=True,
                  nb_epochs_per_saving=1, exp_name=None, **kwargs_train):
         """ Train the model.
 
@@ -135,9 +110,9 @@ class Base(object):
         checkpointdir: str, default None
             a destination traininger where intermediate architectures/historues will be
             saved.
-        training_index: int or [int] default None
-            the index(es) of the training(s) to use for the training, default use all the
-            available trainings.
+        run: int or [int] default None
+            the index(es) of the run(s) to use for the training, default use all the
+            available runs.
         scheduler: torch.optim.lr_scheduler, default None
             a scheduler used to reduce the learning rate.
         with_validation: bool, default True
@@ -151,30 +126,31 @@ class Base(object):
         train_history, valid_history: History
             the train/validation history.
         """
-
-        train_history = History(name="Train_%s"%(exp_name or ""))
+        if not os.path.exists(checkpointdir):
+            raise FileNotFoundError(f"Checkpoint directory does not exists ! {checkpointdir}")
+        train_history = History(name="Train")
         if with_validation is not None:
-            valid_history = History(name="Validation_%s"%(exp_name or ""))
+            valid_history = History(name="Validation")
         else:
             valid_history = None
-        self.logger.info(f"Loss : {self.loss}")
-        self.logger.info(f"Optimizer : {self.optimizer}")
-        trainings = range(manager.get_nb_trainings())
-        if training_index is not None:
-            if isinstance(training_index, int):
-                trainings = [training_index]
-            elif isinstance(training_index, list):
-                trainings = training_index
+        logger.info(f"Loss : {self.loss}")
+        logger.info(f"Optimizer : {self.optimizer}")
+        if isinstance(runs, int):
+            runs = [runs]
+        elif isinstance(runs, list):
+            runs = runs
+        else:
+            runs = range(manager.get_number_of_runs())
         init_optim_state = deepcopy(self.optimizer.state_dict())
         init_model_state = deepcopy(self.model.state_dict())
         scaler = kwargs_train.get("gradscaler")
         if scheduler is not None:
             init_scheduler_state = deepcopy(scheduler.state_dict())
-        for training in trainings:
+        for run in runs:
             # Initialize everything before optimizing on a new training
             if scaler is not None:
                 kwargs_train["gradscaler"] = GradScaler()
-                self.logger.info("GradScaler activated")
+                logger.info("GradScaler activated")
             self.optimizer.load_state_dict(init_optim_state)
             self.model.load_state_dict(init_model_state)
             if scheduler is not None:
@@ -182,65 +158,64 @@ class Base(object):
             loader = manager.get_dataloader(
                 train=True,
                 validation=True,
-                training_index=training)
+                run=run)
             min_loss, best_model, best_epoch = None, None, None
             for epoch in range(nb_epochs):
-                loss, values = self.train(loader.train, training, epoch, **kwargs_train)
+                loss, values = self.train(loader.train, run, epoch, **kwargs_train)
 
-                train_history.log((training, epoch), loss=loss, **values)
+                train_history.log((run, epoch), loss=loss, **values)
                 train_history.summary()
                 if scheduler is not None:
                     scheduler.step()
-                    self.logger.info('Scheduler lr: {}'.format(scheduler.get_last_lr()))
-                    self.logger.info('Optimizer lr: %f' % self.optimizer.param_groups[0]['lr'])
-                if checkpointdir is not None and (epoch % nb_epochs_per_saving == 0 or epoch == nb_epochs-1) \
+                    logger.info('Scheduler lr: {}'.format(scheduler.get_last_lr()))
+                    logger.info('Optimizer lr: %f' % self.optimizer.param_groups[0]['lr'])
+                if (epoch % nb_epochs_per_saving == 0 or epoch == nb_epochs-1) \
                         and epoch > 0:
-                    if not os.path.isdir(checkpointdir):
-                        subprocess.check_call(['mkdir', '-p', checkpointdir])
-                        self.logger.info("Directory %s created."%checkpointdir)
-                    checkpoint(
+                    self.save_checkpoint(
                         model=self.model.state_dict(),
                         epoch=epoch,
-                        training=training,
+                        run=run,
                         outdir=checkpointdir,
                         name=exp_name,
-                        optimizer=self.optimizer)
+                        optimizer=self.optimizer.state_dict())
                     train_history.save(
                         outdir=checkpointdir,
+                        exp_name=exp_name,
                         epoch=epoch,
-                        training=training)
+                        run=run,
+                        to_dict=True)
                 if with_validation:
-                    y_pred, y_true, X, loss, values = self.test(loader.validation, **kwargs_train)
-                    valid_history.log((training, epoch), validation_loss=loss, y_pred=y_pred, y_true=y_true, **values)
+                    y_pred, y_true, loss, values = self.test(loader.validation, **kwargs_train)
+                    valid_history.log((run, epoch), validation_loss=loss, y_pred=y_pred, y_true=y_true, **values)
                     valid_history.summary()
-                    if checkpointdir is not None and (epoch % nb_epochs_per_saving == 0 or epoch == nb_epochs-1) \
+                    if (epoch % nb_epochs_per_saving == 0 or epoch == nb_epochs-1) \
                             and epoch > 0:
                         valid_history.save(
                             outdir=checkpointdir,
+                            exp_name=exp_name,
                             epoch=epoch,
-                            training=training)
+                            run=run,
+                            to_dict=True)
                 if min_loss is None or loss < min_loss:
                     min_loss = loss
                     best_epoch = epoch
                     best_model = deepcopy(self.model.state_dict())
             if best_epoch % nb_epochs_per_saving != 0:
-                checkpoint(
+                self.save_checkpoint(
                     model=best_model,
                     epoch=best_epoch,
-                    training=training,
+                    run=run,
                     outdir=checkpointdir,
-                    name=exp_name,
-                    state_dict=True
-                )
+                    name=exp_name)
         return train_history, valid_history
 
-    def train(self, loader, training=None, epoch=None, **kwargs):
+    def train(self, loader, run=None, epoch=None, **kwargs):
         """ Train the model on the trained data.
 
         Parameters
         ----------
         loader: a pytorch Dataloader
-        training: number of the training
+        run: number of the run
         epoch: number of the epoch
 
         Returns
@@ -253,10 +228,9 @@ class Base(object):
         scaler = kwargs.get("gradscaler")
         self.model.train()
         nb_batch = len(loader)
-        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({training},{epoch})")
+        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({run},{epoch})")
 
         values = {}
-        iteration = 0
         losses = []
         y_pred = []
         y_true = []
@@ -300,14 +274,13 @@ class Base(object):
                 if name not in values:
                     values[name] = 0
                 values[name] += float(aux_loss) / nb_batch
-            iteration += 1
         loss = np.mean(losses)
+        y_pred = np.asarray(y_pred)
+        y_true = np.asarray(y_true)
         for name, metric in self.metrics.items():
-            if name not in values:
-                values[name] = 0
-            values[name] = float(metric(torch.tensor(y_pred), torch.tensor(y_true)))
-        values["y_pred"] = y_pred
-        values["y_true"] = y_true
+            values[name] = float(metric(y_pred, y_true))
+        #values["y_pred"] = y_pred
+        #values["y_true"] = y_true
         pbar.close()
         return loss, values
 
@@ -332,17 +305,17 @@ class Base(object):
         values: dict
             the values of the metrics if true data availble.
         """
-        set_name = "internal test" if exp_name.startswith("Intra") else "external test"
-        y, y_true, X, loss, values = self.test(loader, set_name, **kwargs)
+        set_name = "internal test" if exp_name.startswith("internal") else "external test"
+        y_pred, y_true, loss, values = self.test(loader, set_name, **kwargs)
 
         if saving_dir is not None:
             if not os.path.isdir(saving_dir):
                 subprocess.check_call(['mkdir', '-p', saving_dir])
-                self.logger.info("Directory %s created." % saving_dir)
-            with open(os.path.join(saving_dir, f"Test_{exp_name}.pkl"), 'wb') as f:
-                pickle.dump({'y_pred': y, 'y_true': y_true, 'loss': loss, 'metrics': values}, f)
+                logger.info("Directory %s created." % saving_dir)
+            with open(os.path.join(saving_dir, f"Test-{exp_name}.pkl"), 'wb') as f:
+                pickle.dump({'y_pred': y_pred, 'y_true': y_true, 'loss': loss, 'metrics': values}, f)
 
-        return y, X, y_true, loss, values
+        return y_pred, y_true, loss, values
 
     def test(self, loader, set_name="validation", **kwargs):
         """ Evaluate the model on the tests or validation data.
@@ -370,10 +343,9 @@ class Base(object):
         pbar = tqdm(total=nb_batch, desc="Mini-Batch")
         loss = 0
         values = {}
-        visuals = []
 
         with torch.no_grad():
-            y, y_true, X = [], [], []
+            y_pred, y_true = [], []
 
             for dataitem in loader:
                 pbar.update()
@@ -399,10 +371,7 @@ class Base(object):
                     batch_loss = self.loss(outputs, *list_targets)
                     loss += float(batch_loss) / nb_batch
 
-                y.extend(outputs.cpu().detach().numpy())
-
-                if isinstance(inputs, torch.Tensor):
-                    X.extend(inputs.cpu().detach().numpy())
+                y_pred.extend(outputs.cpu().detach().numpy())                   
 
                 aux_losses = (self.model.get_aux_losses() if hasattr(self.model, 'get_aux_losses') else dict())
                 aux_losses.update(self.loss.get_aux_losses() if hasattr(self.loss, 'get_aux_losses') else dict())
@@ -411,14 +380,15 @@ class Base(object):
                     if name not in values:
                         values[name] = 0
                     values[name] += aux_loss / nb_batch
-
-                # Now computes the metrics with (y, y_true)
-                for name, metric in self.metrics.items():
-                    name += f" on {set_name} set"
-                    values[name] = metric(torch.tensor(y), torch.tensor(y_true))
-            pbar.close()
-
-        return y, y_true, X, loss, values
+            y_pred = np.asarray(y_pred)
+            y_true = np.asarray(y_true)
+            
+            # Now computes the metrics with (y, y_true)
+            for name, metric in self.metrics.items():
+                name += f" on {set_name} set"
+                values[name] = metric(y_pred, y_true)
+        pbar.close()
+        return y_pred, y_true, loss, values
 
     def get_embeddings(self, loader):
         """ Get the outputs of the model.
@@ -461,4 +431,43 @@ class Base(object):
             pbar.close()
 
         return z, labels, X
-
+    
+    def load_checkpoint(self, pretrained, strict=False):
+            checkpoint = None
+            try:
+                checkpoint = torch.load(pretrained, map_location=lambda storage, loc: storage)
+                logger.debug(f"Checkpoint Load : {pretrained}")
+            except BaseException as e:
+                logger.error('Impossible to load the checkpoint: %s' % str(e))
+            if checkpoint is not None:
+                if hasattr(checkpoint, "state_dict"):
+                    self.model.load_state_dict(checkpoint.state_dict())
+                    logger.debug(f"State Dict Loaded")
+                elif isinstance(checkpoint, dict):
+                    if "model" in checkpoint:
+                        try:
+                            for key in list(checkpoint['model'].keys()):
+                                if key.replace('module.', '') != key:
+                                    checkpoint['model'][key.replace('module.', '')] = checkpoint['model'][key]
+                                    del(checkpoint['model'][key])
+                            unexpected = self.model.load_state_dict(checkpoint["model"], strict=strict)
+                            logger.info('Model loading info: {}'.format(unexpected))
+                            logger.info('Model loaded')
+                        except BaseException as e:
+                            logger.error('Error while loading the model\'s weights: %s' % str(e))
+                            raise ValueError("")
+                else:
+                    self.model.load_state_dict(checkpoint)
+    
+    def save_checkpoint(self, epoch, run, outdir, name=None, **kwargs):
+        name = get_chk_name(name, run, epoch)
+        outfile = os.path.join(outdir, name)
+        if "model" not in kwargs.keys():
+            kwargs["model"] = self.model.state_dict()
+        if "optimizer" not in kwargs.keys():
+            kwargs["optimizer"] = self.optimizer.state_dict()
+        torch.save(
+            {"name": name,
+             "run": run,
+             "epoch": epoch,
+             **kwargs}, outfile)
