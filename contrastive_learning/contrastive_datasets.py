@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from datasets.clinical_multisites import SCZDataset, ASDDataset, BipolarDataset
+from datasets.clinical_multisites import SCZDataset, ASDDataset, BDDataset
 
 
 class ContrastiveSCZDataset(SCZDataset):
@@ -22,7 +22,7 @@ class ContrastiveASDDataset(ASDDataset):
         return np.stack((x1, x2), axis=0), y1
 
 
-class ContrastiveBipolarDataset(BipolarDataset):
+class ContrastiveBDDataset(BDDataset):
 
     def __getitem__(self, idx: int):
         np.random.seed()
