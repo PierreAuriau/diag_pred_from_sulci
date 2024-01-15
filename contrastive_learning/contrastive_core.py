@@ -24,13 +24,13 @@ class ContrastiveBase(Base):
                     values[name] = 0
                 values[name] += float(metric(logits, target)) / nb_batch
 
-    def train(self, loader, fold=None, epoch=None, **kwargs):
+    def train(self, loader, run=None, epoch=None, **kwargs):
         """ Train the model on the dataloader provided
         Parameters
         ----------
         loader: a pytorch Dataloader
-        epoch : number of epoch
-        fold : number of fold
+        epoch : number of the epoch
+        run : number of the run
 
         Returns
         -------
@@ -42,7 +42,7 @@ class ContrastiveBase(Base):
         scaler = kwargs.get("gradscaler")
         self.model.train()
         nb_batch = len(loader)
-        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({fold},{epoch})")
+        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({run},{epoch})")
 
         values = {}
         losses = []

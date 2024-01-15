@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import argparse
 import sys
+import logging
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
@@ -12,42 +13,35 @@ from logs.utils import get_chk_name
 from dl_training.core import Base
 from dl_training.training import BaseTrainer
 from dl_training.testing import BaseTester
-from preprocessing.transforms import *
+from img_processing.transforms import *
 from logs.utils import setup_logging
 
 logger = logging.getLogger()
-
-# FIXME : metrics --> be compliant with array
-# FIXME : improve it (metrics in particular) for age regression
-
 
 class RegressionTester(BaseTester):
 
     def __init__(self, args):
         self.args = args
-        self.net = BaseTrainer.build_network(args.net, args.model, out_block="features", in_channels=1)
+        self.net = BaseTrainer.build_network(args.net, args.model, in_channels=1)
         self.manager = BaseTrainer.build_data_manager("base", args.pb, args.preproc, args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
-                                                      number_of_folds=args.nb_folds,
+                                                      nb_runs=args.nb_runs,
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
         self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
         self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
-        if self.args.pretrained_path and self.manager.number_of_folds > 1:
-            logger.warning('Several folds found while a unique pretrained path is set!')
 
     def run(self):
         epochs_tested = self.get_epochs_to_test()
-        folds_to_test = self.get_folds_to_test()
-        for fold in folds_to_test:
-            for epoch in epochs_tested[fold]:
-                pretrained_path = self.args.pretrained_path or \
-                                  os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, fold, epoch))
-                logger.debug(f"Pretrained path ({fold}/{epoch}): {pretrained_path}")
+        runs_to_test = self.get_runs_to_test()
+        for run in runs_to_test:
+            for epoch in epochs_tested[run]:
+                pretrained_path = os.path.join(self.args.checkpoint_dir, get_chk_name(self.args.exp_name, run, epoch))
+                logger.debug(f"Pretrained path ({run}/{epoch}): {pretrained_path}")
                 if self.args.outfile_name is None:
-                    self.args.outfile_name = f"RegressionTester_{self.args.exp_name}"
-                exp_name = f"{self.args.outfile_name}_fold{fold}_epoch{epoch}.pkl"
+                    self.args.outfile_name = f"RegressionTester"
+                exp_name = f"{self.args.outfile_name}_exp-{self.args.exp_name}_run-{run}_epoch-{epoch}.pkl"
                 model = Base(model=self.net,
                              loss=self.loss,
                              metrics=self.metrics,
@@ -64,7 +58,7 @@ class RegressionTester(BaseTester):
                 logger.info(f"Train set")
                 loader = self.manager.get_dataloader(train=True,
                                                      validation=True,
-                                                     fold_index=fold)
+                                                     run=run)
                 z, labels, _ = model.get_embeddings(loader.train)
                 X = np.array(z)
                 y_true = np.array(labels)
@@ -95,7 +89,7 @@ class RegressionTester(BaseTester):
                     logger.info(f"{test} test")
                     loader = self.manager.get_dataloader(test=(test == "external"),
                                                          test_intra=(test == "internal"),
-                                                         fold_index=fold)
+                                                         run=run)
                     z, labels, _ = model.get_embeddings(loader.test, )
                     X = np.array(z)
                     y_true = np.array(labels)
@@ -122,8 +116,8 @@ def main(argv):
     parser.add_argument("--outfile_name", type=str,
                         help="The output file name used to save the results in testing mode.")
     parser.add_argument("--pb", type=str, choices=["scz", "bd", "asd"])
-    parser.add_argument("--folds", nargs='+', type=int, help="Fold indexes to run during the training")
-    parser.add_argument("--nb_folds", type=int, default=5)
+    parser.add_argument("--run", nargs='+', type=int, help="Run indexes to test")
+    parser.add_argument("--nb_runs", type=int, default=5)
 
     parser.add_argument("--net", type=str, help="Network to use")
     parser.add_argument("--model", type=str, help="Model to use", choices=["base", "SupCon"],
