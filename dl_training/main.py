@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import torch
 import logging
@@ -9,19 +10,25 @@ from logs.utils import save_hyperparameters, setup_logging
 
 logger = logging.getLogger()
 
-# TODO : change class model to add MLP outside models
-# TODO : add help
-# TODO : change preproc for smoothing / no
-# TODO : save into pickle with numpy instead history
-# TODO : improve tester
+# TODO : update save / load in contrastive core to save/load only encoder
+# * how to save and load model ? 
+# * Sequential class with get_embeddings param <https://discuss.pytorch.org/t/save-part-of-the-model/28519>
+# * contrastive base --> save only encoder ?
+# * contrastive testing --> load only encoder
+# TODO : save into pickle with numpy instead history OK
+# TODO : update contrastive_tester
 # TODO : python script for creating pickles
+# TODO : python script for saliency maps
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(__file__),
+        description='Training and testing DL models.')
 
     # Data location + saving paths
-    parser.add_argument("--root", type=str, required=True, help="Path to data root directory.")
-    parser.add_argument("--preproc", type=str, default='vbm', choices=['vbm', 'quasi_raw', "skeleton"])
+    parser.add_argument("--root", type=str, required=True, 
+                        help="Path to data root directory.")
+    parser.add_argument("--preproc", type=str, default='no', choices=["no", "smoothing"])
     parser.add_argument("--checkpoint_dir", type=str, required=True,
                         help="Folder where all the data will be saved.")
     parser.add_argument("--exp_name", type=str, required=True,
@@ -31,15 +38,15 @@ if __name__ == "__main__":
     parser.add_argument("--pb", type=str, choices=["scz", "bd", "asd"], required=True,
                         help="Diagnosis to predict.")
 
-    parser.add_argument("--nb_trainings", type=int, default=5,
-                        help="Number of trainings for each set of hyper-parameters "
-                             "and a different random initialization of network weights. Default is: 3")
-    parser.add_argument("--training_index", nargs='+', type=int, 
-                        help="Training indexes to run during the training or testing.")
+    parser.add_argument("--nb_runs", type=int, default=3,
+                        help="Number of trainings with a different random initialization "
+                             "of network weights. Default is: 3")
+    parser.add_argument("--runs", nargs='+', type=int, 
+                        help="Run indexes of models to train or test.")
 
     # Important: what model do we use
     parser.add_argument("--net", type=str, choices=["densenet121", "alexnet", "resnet18"], default="densenet121",
-                        help="Network to use. Default is : densenet121")
+                        help="Architecture of network to use. Default is : densenet121")
     parser.add_argument("--model", type=str,  choices=["base", "SupCon"], default="base",
                         help="Model to use. Default is: base")
 
@@ -75,13 +82,10 @@ if __name__ == "__main__":
     # Self-supervised learning
     parser.add_argument("--temperature", type=float, default=0.1,
                         help="Hyper-parameter for SupCon loss. Default is: 0.1",)
-
-    # Transfer Learning
-    # TODO : to remove ?
-    parser.add_argument("--pretrained_path", type=str)
-
+    
     # This code can be executed on CPU or GPU
-    parser.add_argument("--cuda", type=bool, default=True, help="If True, executes the code on GPU. Default is: True.")
+    parser.add_argument("--cuda", type=bool, default=True, 
+                        help="If True, executes the code on GPU. Default is: True.")
 
     # Kind of tests
     parser.add_argument("--train", action="store_true", help="If set, train model.")
@@ -93,16 +97,21 @@ if __name__ == "__main__":
     # Verbosity
     parser.add_argument("-v", "--verbose", action="store_true", help="Activate verbosity mode")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    # ---------------------------------------------------------------------------------------------------------------- #
+    return args
 
+
+def main(argv):
+    
+    args = parse_args(argv)
+    
     # Create saving directory
     os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     # Setup Logging
     setup_logging(level="debug" if args.verbose else "info",
-                  logfile=os.path.join(args.checkpoint_dir, f"{args.exp_name}.log"))
+                  logfile=os.path.join(args.checkpoint_dir, f"exp-{args.exp_name}.log"))
 
     if args.sweep:
         # Wandb
@@ -133,9 +142,11 @@ if __name__ == "__main__":
         if args.sweep:
             from logs.wandb_log import main_log
             main_log(train_history, valid_history)
-        # do not consider the pretrained path anymore since it will be eventually computed automatically
-        args.pretrained_path = None
 
     if args.test:
         tester = BaseTester(args)
         tester.run()
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])
