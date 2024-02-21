@@ -6,10 +6,10 @@ from torch import nn
 import math
 
 class alexnet(nn.Module):
-    def __init__(self, n_embedding=128, n_channels=1):
+    def __init__(self, n_embedding=128, in_channels=1):
         super(alexnet, self).__init__()
         self.features = nn.Sequential(
-            nn.Conv3d(n_channels, 64, kernel_size=5, stride=2, padding=0),
+            nn.Conv3d(in_channels, 64, kernel_size=5, stride=2, padding=0),
             nn.BatchNorm3d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool3d(kernel_size=3, stride=3),
