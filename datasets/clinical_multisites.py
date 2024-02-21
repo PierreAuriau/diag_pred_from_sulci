@@ -8,7 +8,7 @@ import numpy as np
 import bisect, logging
 from sklearn.model_selection import ShuffleSplit, StratifiedShuffleSplit
 from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
-from typing import Callable, List, Type, Sequence, Dict
+from typing import Callable, List, Type, Sequence, Dict, Union
 
 logger = logging.getLogger()
 
@@ -31,7 +31,7 @@ class ClinicalBase(ABC, Dataset):
           * id: pandas DataFrame, each row contains a unique identifier for an image
 
     """
-    def __init__(self, root: str, target: [str, List[str]] = 'diagnosis',
+    def __init__(self, root: str, target: Union[str, List[str]] = 'diagnosis', preproc: str = "no",
                  split: str = 'train', transforms: Callable[[np.ndarray], np.ndarray] = None,
                  load_data: bool = False):
         """
@@ -51,6 +51,7 @@ class ClinicalBase(ABC, Dataset):
         self.root = root
         self.split = split
         self.target_name = target
+        self.preproc = preproc
         self.transforms = transforms
 
         if self.split == "val":
@@ -63,11 +64,11 @@ class ClinicalBase(ABC, Dataset):
             root, self._train_val_test_scheme))[self.split]
         
         # 1) Loads globally all the data for a given pre-processing
-        _root = os.path.join(root, self._get_folder)
-        df = pd.concat([pd.read_csv(os.path.join(_root, self._get_pd_files % db), dtype=self._id_types) 
+        _root = os.path.join(root, self._data_folder)
+        df = pd.concat([pd.read_csv(os.path.join(_root, self._pd_files % db), dtype=self._id_types) 
                         for db in self._studies],
                        ignore_index=True, sort=False)
-        data = [np.load(os.path.join(_root, self._get_npy_files % db), mmap_mode='r')
+        data = [np.load(os.path.join(_root, self._npy_files % db), mmap_mode='r')
                 for db in self._studies]
         cumulative_sizes = np.cumsum([len(db) for db in data])
 
@@ -127,22 +128,25 @@ class ClinicalBase(ABC, Dataset):
         return True
 
     @property
-    def _get_npy_files(self) -> Dict[str, str]:
-        return "%s_t1mri_skeleton_data32.npy"
+    def _npy_files(self) -> str:
+        if self.preproc == "smoothing":
+            return "%s_t1mri_smooth_skeleton_data32.npy"
+        else:
+            return "%s_t1mri_skeleton_data32.npy"
 
     @property
-    def _get_pd_files(self) -> Dict[str, str]:
+    def _pd_files(self) -> str:
         return "%s_t1mri_skeleton_participants.csv"
     
     @property
-    def _id_types(self):
+    def _id_types(self) -> Dict[str, Type]:
         return {"participant_id": str,
                 "session": int,
                 "acq": int,
                 "run": int}
 
     @property
-    def _get_folder(self) -> Dict[str, str]:
+    def _data_folder(self) -> str:
         return "morphologist"
 
     def _check_integrity(self):
@@ -157,7 +161,7 @@ class ClinicalBase(ABC, Dataset):
         """
         is_complete = os.path.isdir(self.root)
         is_complete &= os.path.isfile(os.path.join(self.root, self._train_val_test_scheme))
-        dir_files = {self._get_folder: [self._get_pd_files, self._get_npy_files]}
+        dir_files = {self._data_folder: [self._pd_files, self._npy_files]}
 
         for (directory, files) in dir_files.items():
             for file in files:
@@ -337,14 +341,14 @@ class BDDataset(ClinicalBase):
 
     @property
     def _dx_site_mappings(self):
-        return dict(diagnosis={"control": 0, "bipolar": 1, "bipolar disorder": 1, "psychotic bipolar disorder": 1, "bd":1},
+        return dict(diagnosis={"control": 0, "bipolar": 1, "bipolar disorder": 1, "psychotic bipolar disorder": 1, "bd": 1, "psychotic bd": 1},
                     site=self._site_mapping)
 
     def _check_integrity(self):
         return super()._check_integrity() & os.path.isfile(os.path.join(self.root, "mapping_site_name-class_bd.pkl"))
 
     def __init__(self, root: str, *args, **kwargs):
-        self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_bip.pkl"))
+        self._site_mapping = self.load_pickle(os.path.join(root, "mapping_site_name-class_bd.pkl"))
         super().__init__(root, *args, **kwargs)
     
     def __str__(self):
