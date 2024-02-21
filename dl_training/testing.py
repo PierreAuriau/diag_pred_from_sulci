@@ -23,8 +23,8 @@ class BaseTester:
                                                       device=('cuda' if args.cuda else 'cpu'),
                                                       num_workers=args.num_cpu_workers,
                                                       pin_memory=True)
-        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
-        self.metrics = self.build_metrics()
+        self.loss = BaseTrainer.build_loss(model=args.model, pb=args.pb, cuda=args.cuda)
+        self.metrics = BaseTrainer.build_metrics(model=args.model)
 
     def get_runs_to_test(self):
         if self.args.runs is not None and len(self.args.runs) > 0:
@@ -40,9 +40,6 @@ class BaseTester:
     
     def build_network(self, **kwargs):
         return BaseTrainer.build_network(name=self.args.net, model=self.args.model, **kwargs)
-    
-    def build_metrics(self):
-        return BaseTrainer.build_metrics(self.args.model)
 
     def run(self):
         epochs_tested = self.get_epochs_to_test()
@@ -66,4 +63,3 @@ class BaseTester:
                                  pretrained=pretrained_path,
                                  use_cuda=self.args.cuda)
                     model.testing(loader.test, saving_dir=self.args.checkpoint_dir, exp_name=exp_name)
-

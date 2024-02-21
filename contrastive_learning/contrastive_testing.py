@@ -4,16 +4,19 @@ import numpy as np
 import argparse
 import sys
 import logging
+from collections import OrderedDict
+
+import torch.nn as nn
 
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import roc_auc_score, balanced_accuracy_score
 
 from logs.utils import get_chk_name
-from dl_training.core import Base
+from contrastive_learning.contrastive_core import ContrastiveBase
 from dl_training.training import BaseTrainer
 from dl_training.testing import BaseTester
-from img_processing.transforms import *
+from architectures.alexnet import alexnet
+from architectures.resnet import resnet18
+from architectures.densenet import densenet121
 from logs.utils import setup_logging
 
 logger = logging.getLogger()
@@ -21,17 +24,34 @@ logger = logging.getLogger()
 class RegressionTester(BaseTester):
 
     def __init__(self, args):
-        self.args = args
-        self.net = BaseTrainer.build_network(args.net, args.model, in_channels=1)
-        self.manager = BaseTrainer.build_data_manager("base", args.pb, args.preproc, args.root,
-                                                      sampler=args.sampler, batch_size=args.batch_size,
-                                                      nb_runs=args.nb_runs,
-                                                      device=('cuda' if args.cuda else 'cpu'),
-                                                      num_workers=args.num_cpu_workers,
-                                                      pin_memory=True)
-        self.loss = BaseTrainer.build_loss(args.model, args.pb, args.cuda)
-        self.metrics = BaseTrainer.build_metrics(args.pb, args.model)
+        super().__init__(args)
+        self.loss = None # Useless here
+        logger.debug(f"Metrics: {self.metrics}")
+        logger.debug(f"Datamanager: {self.manager.__class__.__name__}")
+        
+        try:
+            logger.debug("Net:")
+            for k, v in self.net._modules.items():
+                logger.debug(f"* {k}: {v.__class__.__name__}")
+        except BaseException as e:
+            logger.error(str(e))
 
+    def build_network(self, **kwargs):
+        _ = kwargs.pop("num_classes", 1)
+        if self.args.net == "resnet18":
+            n_embedding = kwargs.pop("n_embedding", 512)
+            net = resnet18(n_embedding=n_embedding, **kwargs)
+        elif self.args.net == "densenet121":
+            n_embedding = kwargs.pop("n_embedding", 512)
+            net = densenet121(n_embedding=n_embedding, **kwargs)
+        elif self.args.net == "alexnet":
+            n_embedding = kwargs.pop("n_embedding", 128) 
+            net = alexnet(n_embedding=n_embedding, **kwargs)
+        else:
+            raise ValueError(f'Unknown network {self.args.net}')
+        
+        return nn.Sequential(OrderedDict([("encoder", net)]))
+    
     def run(self):
         epochs_tested = self.get_epochs_to_test()
         runs_to_test = self.get_runs_to_test()
@@ -41,66 +61,45 @@ class RegressionTester(BaseTester):
                 logger.debug(f"Pretrained path ({run}/{epoch}): {pretrained_path}")
                 if self.args.outfile_name is None:
                     self.args.outfile_name = f"RegressionTester"
-                exp_name = f"{self.args.outfile_name}_exp-{self.args.exp_name}_run-{run}_epoch-{epoch}.pkl"
-                model = Base(model=self.net,
-                             loss=self.loss,
-                             metrics=self.metrics,
-                             pretrained=pretrained_path,
-                             use_cuda=self.args.cuda)
+                exp_name = f"{self.args.outfile_name}_exp-{self.args.exp_name}_run-{run}_ep-{epoch}.pkl"
+                model = ContrastiveBase(model=self.net,
+                                        loss=self.loss,
+                                        metrics=self.metrics,
+                                        pretrained=pretrained_path,
+                                        use_cuda=self.args.cuda)
 
-                class_weights = {"scz": 1.131, "asd": 1.584, "bd": 1.584}
+                #class_weights = {"scz": 1.131, "asd": 1.584, "bd": 1.584}
                 clf = LogisticRegression(penalty='l2', C=1.0, tol=0.0001, fit_intercept=True,
-                                         class_weight=class_weights[self.args.pb],
-                                         random_state=None, solver='lbfgs', max_iter=1000, verbose=0,
+                                         class_weight="balanced",
+                                         random_state=None, solver='lbfgs', max_iter=1000, verbose=self.args.verbose,
                                          n_jobs=self.args.num_cpu_workers)
                 predictions = {}
                 # Training
-                logger.info(f"Train set")
+                logger.info(f"Fit logistic regression on training set")
                 loader = self.manager.get_dataloader(train=True,
                                                      validation=True,
+                                                     test=True,
                                                      run=run)
-                z, labels, _ = model.get_embeddings(loader.train)
-                X = np.array(z)
-                y_true = np.array(labels)
-                clf = clf.fit(X, y_true)
-                y_pred = clf.predict_proba(X)
-                predictions["train"] = {"y_pred": y_pred,
-                                        "y_true": labels}
-                y_score = y_pred[:, 1]
-                predictions["train"]["roc_auc"] = roc_auc_score(y_score=y_score,
-                                                                y_true=y_true)
-                predictions["train"]["balanced_accuracy"] = balanced_accuracy_score(y_pred=y_score > 0.5,
-                                                                                    y_true=y_true)
-                # Validation
-                logger.info(f"Validation set")
-                z, labels, _ = model.get_embeddings(loader.validation)
-                X = np.array(z)
-                y_true = np.array(labels)
-                y_pred = clf.predict_proba(X)
-                y_score = y_pred[:, 1]
-                predictions["validation"] = {"y_pred": y_pred,
-                                             "y_true": y_true}
-                predictions["validation"]["roc_auc"] = roc_auc_score(y_score=y_score,
-                                                                     y_true=y_true)
-                predictions["validation"]["balanced_accuracy"] = balanced_accuracy_score(y_pred=y_score > 0.5,
-                                                                                         y_true=y_true)
-                # Tests
-                for test in ["external", "internal"]:
-                    logger.info(f"{test} test")
-                    loader = self.manager.get_dataloader(test=(test == "external"),
-                                                         test_intra=(test == "internal"),
-                                                         run=run)
-                    z, labels, _ = model.get_embeddings(loader.test, )
-                    X = np.array(z)
-                    y_true = np.array(labels)
-                    y_pred = clf.predict_proba(X)
-                    y_score = y_pred[:, 1]
-                    predictions[f"{test} test"] = {"y_pred": y_pred,
-                                                   "y_true": y_true}
-                    predictions[f"{test} test"]["roc_auc"] = roc_auc_score(y_score=y_score,
-                                                                           y_true=y_true)
-                    predictions[f"{test} test"]["balanced_accuracy"] = balanced_accuracy_score(y_pred=y_score > 0.5,
-                                                                                               y_true=y_true)
+                z, labels = model.get_embeddings(loader.train)
+                clf = clf.fit(z, labels)
+                logger.debug(f"LogisticRegression classes: {clf.classes_}")
+                for split in ("train", "validation", "test", "test_intra"): 
+                    logger.info(f"Set: {split}")
+                    if split == "test_intra":
+                        loader = self.manager.get_dataloader(test_intra=True,
+                                                             run=run)
+                        z, labels = model.get_embeddings(loader.test)
+                    else:
+                        z, labels = model.get_embeddings(getattr(loader, split))
+                    y_pred = clf.predict_proba(z)
+                    if "test" in split:
+                        split = {"test": "external test", "test_intra": "internal test"}[split]
+                    predictions[split] = {"y_pred": y_pred,
+                                          "y_true": labels,
+                                          "metrics": {}}
+                    for name, metric in model.metrics.items():
+                        predictions[split]["metrics"][name] = metric(y_pred=y_pred, y_true=labels)
+                
                 with open(os.path.join(self.args.checkpoint_dir, exp_name), 'wb') as f:
                     pickle.dump(predictions, f)
 
