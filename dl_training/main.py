@@ -10,12 +10,12 @@ from logs.utils import save_hyperparameters, setup_logging
 
 logger = logging.getLogger()
 
+# UPDATEs :
 # TODO : update save / load in contrastive core to save/load only encoder
 # * how to save and load model ? 
 # * Sequential class with get_embeddings param <https://discuss.pytorch.org/t/save-part-of-the-model/28519>
 # * contrastive base --> save only encoder ?
 # * contrastive testing --> load only encoder
-# TODO : save into pickle with numpy instead history OK
 # TODO : update contrastive_tester
 # TODO : python script for creating pickles
 # TODO : python script for saliency maps
@@ -76,12 +76,12 @@ def parse_args(argv):
                         "Default is: 3")
     parser.add_argument("--sampler", choices=["random", "weighted_random", "sequential"], default="random",
                         help="Image sampling for mini-batchs. Default is: random")
-    parser.add_argument("--data_augmentation", type=str, nargs="+", default=None,
-                        help="Data Augmentation for contrastive models.")
 
     # Self-supervised learning
     parser.add_argument("--temperature", type=float, default=0.1,
-                        help="Hyper-parameter for SupCon loss. Default is: 0.1",)
+                        help="Hyper-parameter for SupCon loss. Default is: 0.1")
+    parser.add_argument("--data_augmentation", type=str, nargs="+", default=None,
+                    help="Data Augmentation for contrastive models.")
     
     # This code can be executed on CPU or GPU
     parser.add_argument("--cuda", type=bool, default=True, 
