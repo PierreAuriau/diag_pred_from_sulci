@@ -1,9 +1,17 @@
+# -*- coding: utf-8 -*-
+"""
+Core classes for contrastive learning.
+"""
+
 from tqdm import tqdm
 import numpy as np
+import logging
 import torch
 from torch.cuda.amp import GradScaler, autocast
+
 from dl_training.core import Base
 
+logger = logging.getLogger()
 
 class ContrastiveBase(Base):
     def get_output_pairs(self, inputs):
@@ -114,7 +122,7 @@ class ContrastiveBase(Base):
         loss = 0
         values = {}
         visuals = []
-        y, y_true, X = [], [], []
+        y, y_true = [], []
 
         with torch.no_grad():
             for dataitem in loader:
@@ -155,6 +163,7 @@ class ContrastiveBase(Base):
             visuals = np.concatenate(visuals, axis=0)
 
         if with_visuals:
-            return y, y_true, X, loss, values, visuals
+            return y, y_true, loss, values, visuals
 
-        return y, y_true, X, loss, values
+        return y, y_true, loss, values
+    
