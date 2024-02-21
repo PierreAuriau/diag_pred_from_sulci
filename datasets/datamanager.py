@@ -7,13 +7,11 @@ import logging
 from collections import namedtuple
 from typing import Callable, List, Type, Sequence, Dict
 
-from torchvision.transforms.transforms import Compose
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
 
 from datasets.clinical_multisites import SCZDataset, BDDataset, ASDDataset
 from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
     ContrastiveBDDataset, ContrastiveASDDataset
-from img_processing.preprocessing import Padding, Crop, Normalize, Binarize, GaussianSmoothing
 from img_processing.da_module import DAModule
 
 logger = logging.getLogger()
@@ -24,8 +22,7 @@ DataItem = namedtuple("DataItem", ["inputs", "outputs", "labels"])
 class ClinicalDataManager(object):
 
     def __init__(self, root: str, preproc: str, db: str, labels: List[str] = None, sampler: str = "random",
-                 batch_size: int = 1, nb_runs: int = None, mask=None,
-                 model: str = "base", data_augmentation: List[str] = None,
+                 batch_size: int = 1, nb_runs: int = None, model: str = "base", data_augmentation: List[str] = None,
                  device: str = "cuda", **dataloader_kwargs):
 
         assert db in ["scz", "bd", "asd"], "Unknown db: %s" % db
@@ -35,17 +32,14 @@ class ClinicalDataManager(object):
 
         self.dataset = dict()
         self.labels = labels or []
-        self.mask = mask
         self.nb_runs = nb_runs
         self.sampler = sampler
         self.batch_size = batch_size
         self.device = device
         self.dataloader_kwargs = dataloader_kwargs
 
-        input_transforms = self.get_input_transforms(preproc=preproc)
-        logger.debug(f"input_transforms : {input_transforms}")
         if data_augmentation is None:
-            data_augmentation = ("no", )
+            data_augmentation = ["no"]
         data_augmentation = DAModule(transforms=data_augmentation)
         logger.debug(f"data_augmentation : {data_augmentation}")
         dataset_cls = None
@@ -64,17 +58,14 @@ class ClinicalDataManager(object):
                 dataset_cls = ContrastiveASDDataset
             else:
                 dataset_cls = ASDDataset
-        logger.debug(f"Dataset CLS : {dataset_cls}")
-        dataset = dataset_cls(root, split="train",
+        logger.debug(f"Dataset CLS : {dataset_cls.__name__}")
+        dataset = dataset_cls(root, split="train", preproc=preproc,
                               transforms=data_augmentation, target=labels)
-        dataset = dataset.transform(input_transforms, copy=False)
         self.dataset["train"] = [dataset for _ in range(self.nb_runs)]
-        dataset = dataset_cls(root, split="val", target=labels)
-        dataset = dataset.transform(input_transforms, copy=False)
+        dataset = dataset_cls(root, split="val", preproc=preproc, target=labels)
         self.dataset["validation"] = [dataset for _ in range(self.nb_runs)]
         for split in ["test", "test_intra"]:
-            dataset = dataset_cls(root, split=split, target=labels)
-            dataset = dataset.transform(input_transforms, copy=False)
+            dataset = dataset_cls(root, split=split, preproc=preproc, target=labels)
             self.dataset[split] = dataset
 
     @staticmethod
@@ -98,7 +89,6 @@ class ClinicalDataManager(object):
                        test=False, test_intra=False, run=None):
 
         assert test + test_intra <= 1, "Only one tests accepted"
-        _test, _train, _validation, sampler = (None, None, None, None)
         tests_to_return = []
         if validation:
             tests_to_return.append("validation")
@@ -130,17 +120,9 @@ class ClinicalDataManager(object):
                 dataset, batch_size=self.batch_size, sampler=sampler,
                 collate_fn=self.collate_fn, drop_last=drop_last,
                 **self.dataloader_kwargs)
-
+        else:
+            _train = None
         return SetItem(train=_train, **test_loaders)
-
-    @staticmethod
-    def get_input_transforms(preproc):
-        # Input size 128 x 152 x 128
-        input_transforms = Compose(
-                [Padding([1, 128, 160, 128], mode='constant'), Binarize(one_values=[30, 35, 60, 100, 110, 120])])
-        if preproc == "smoothing":
-                input_transforms.transforms.append(GaussianSmoothing(sigma=1.0, size=5))
-        return input_transforms
 
     def get_number_of_runs(self):
         return self.nb_runs
