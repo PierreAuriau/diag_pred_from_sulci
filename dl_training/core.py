@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
 
 # Package import
-from logs.utils import checkpoint, get_chk_name
+from logs.utils import get_chk_name
 from logs.history import History
 import dl_training.metrics as mmetrics
 
