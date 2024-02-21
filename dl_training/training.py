@@ -23,7 +23,8 @@ class BaseTrainer:
 
     def __init__(self, args):
         self.args = args
-        self.net = BaseTrainer.build_network(args.net, args.model, num_classes=1, in_channels=1)
+        self.net = BaseTrainer.build_network(name=args.net, model=args.model, 
+                                             num_classes=1, in_channels=1)
         self.manager = BaseTrainer.build_data_manager(model=args.model, pb=args.pb, 
                                                       preproc=args.preproc, root=args.root,
                                                       sampler=args.sampler, batch_size=args.batch_size,
@@ -90,7 +91,6 @@ class BaseTrainer:
             metrics = ["accuracy"]
         else:
             metrics = ["balanced_accuracy", "roc_auc"]
-        logger.debug(f"Metrics : {metrics}")
         return metrics
 
     @staticmethod
@@ -123,7 +123,7 @@ class BaseTrainer:
         else:
             raise ValueError('Unknown network %s' % name)
         
-        if model == "Supcon":
+        if model == "SupCon":
             return nn.Sequential(OrderedDict([("encoder", net),
                                               ("projector", MLP((n_embedding, 512), 128))]))
         else:
