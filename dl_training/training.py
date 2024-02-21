@@ -48,11 +48,8 @@ class BaseTrainer:
                                use_cuda=args.cuda,
                                loss=self.loss,
                                optimizer=self.optimizer)
-        # logger.debug(f"net : {self.net}")
-        logger.debug(f"manager : {self.manager}")
-        logger.debug(f"loss : {self.loss}")
         logger.debug(f"metrics : {self.metrics}")
-        logger.debug(f"model_cls : {model_cls}")
+        logger.debug(f"model_cls : {model_cls.__name__}")
 
     def run(self):
         with_validation = True
@@ -140,7 +137,7 @@ class BaseTrainer:
         kwargs["model"] = model
         logger.debug(f"Kwargs DataManager : {kwargs}")
         _manager_cls = ClinicalDataManager
-        logger.debug(f"Datamanager : {_manager_cls}")
+        logger.debug(f"Datamanager : {_manager_cls.__name__}")
         manager = _manager_cls(root, preproc, **kwargs)
         return manager
     
