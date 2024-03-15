@@ -7,7 +7,7 @@ This script was used to run experiments described in _Supervised diagnosis predi
 ### Installation
 To install the package, clone the repository into a folder and then :
 ``` Shell
-cd /path/to/folder
+cd /path/to/diag_pred_from_sulci
 pip install -e .
 ```
 
@@ -23,31 +23,25 @@ python3 dl_training/main.py --help
 
 ### Datasets
 
-The 3 clinical datasets `SCZDataset`, `BipolarDataset` and `ASDDataset` are derived mostly from public cohorts excepted for 
-BIOBD, BSNIP and PRAGUE, that are private for clinical research. These 3 datasets are based on the following sources.
+The 3 clinical datasets `SCZDataset`, `BDDataset` and `ASDDataset` are derived mostly from public cohorts excepted for 
+BIOBD, BSNIP1 and PRAGUE, that are private for clinical research. Here, the phenotyp information of each dataset :
 
-**Source**  | **Disease** | **# Subjects** | **Age (avg±std)** | **Sex (\%F)** | **# Sites**
+**Dataset** | **# Subjects** | **Age** (avg±std) | **Sex (\%F)** | **# Sites** | **Studies**
 | :---:| :---: | :---: | :---: | :---: | :---: |
-[BSNIP](http://b-snip.org)  | Control<br>Schizophrenia<br>Bipolard Disorder | 198<br>190<br>116 | 32 ± 12<br>34 ± 12<br>37 ± 12 | 58<br>30<br>66 | 5
-[SCHIZCONNECT](http://schizconnect.org)  | Control<br>Schizophrenia | 275<br>329 | 34 ± 12<br>32 ± 13 | 28<br>47 | 4
-PRAGUE  | Control | 90 | 26 ± 7 | 55 | 1
-[BIOBD](https://pubmed.ncbi.nlm.nih.gov/29981196/) | Control<br>Bipolar Disorder | 306<br>356 | 40 ± 12<br>40 ± 13 | 55 | 8
-[CANDI](https://www.nitrc.org/projects/candi_share) | Control<br>Schizophrenia | 25<br>20 | 10 ± 3<br>13 ± 3 | 41<br>45 | 1
-[CNP](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5664981/) | Control<br>Schizophrenia<br>Bipolar Disorder | 123<br>50<br>49 | 31 ± 9<br>36 ± 9<br>35 ± 9| 47<br>24<br>43 | 1 
-ABIDE 1 | Control<br>Autism Spectrum Disorder | 404<br>372 | 18 ± 9<br>18 ± 9 | 17<br>12 | 16
-ABIDE 2 | Control<br>Autism Spectrum Disorder | 543<br>459<br> | 15 ± 9<br>15 ± 9 | 32<br>14 | 19
+HC<br>SCZ | 761<br>532 | 33 ± 12<br>34 ± 12 | 51<br>29 | 12 | [BSNIP1](http://b-snip.org), [CANDI](https://www.nitrc.org/projects/candi_share), [CNP](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5664981/),   PRAGUE, [SCHIZCONNECT](http://schizconnect.org)
+HC<br>BD | 695<br>469 | 37 ± 14<br>39 ± 12 | 54<br>57 | 15 | [BIOBD](https://pubmed.ncbi.nlm.nih.gov/29981196/), [BSNIP1](http://b-snip.org), [CANDI](https://www.nitrc.org/projects/candi_share), [CNP](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5664981/)
+HC<br>ASD | 926<br>813 | 16 ± 9<br>16 ± 9 | 25<br>13 | 30 | [ABIDE I](http://fcon_1000.projects.nitrc.org/indi/abide/abide_I.html) , [ABIDE II](http://fcon_1000.projects.nitrc.org/indi/abide/abide_II.html)
 
 To run experiments, you need a `root` folder containing :
 - the pickles of train-val-test schemes for each dataset
 - the mapping of acquisition sites
-- the mapping of disease
-- a folder `morphologist` with arrays of skeleton volumes and participant dataframes of each study
+- a folder `morphologist` with arrays of skeleton volumes and corresponding participant dataframes of each study
 
 ### Experiments
 
 1. Architecture selection : 3 CNN architectures have been tested, see the `architecture` folder
 2. Loss selection : BCE and SupCon losses have been compared, see `contrastive_learning` folder for SupCon model
-3. Pre-processing selection : Gaussian smoothing pre-processing, see `preprocessing` folder
+3. Pre-processing selection : Gaussian smoothing pre-processing, see `img_preprocessing` folder
 4. XAI : an occlusion method have been applied to understand model decisions, see `saliency_map` folder
 
 ## Useful links
