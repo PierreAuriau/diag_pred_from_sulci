@@ -6,19 +6,10 @@ import logging
 
 from dl_training.training import BaseTrainer
 from dl_training.testing import BaseTester
+from contrastive_learning.contrastive_testing import RegressionTester
 from logs.utils import save_hyperparameters, setup_logging
 
 logger = logging.getLogger()
-
-# UPDATEs :
-# TODO : update save / load in contrastive core to save/load only encoder
-# * how to save and load model ? 
-# * Sequential class with get_embeddings param <https://discuss.pytorch.org/t/save-part-of-the-model/28519>
-# * contrastive base --> save only encoder ?
-# * contrastive testing --> load only encoder
-# TODO : update contrastive_tester
-# TODO : python script for creating pickles
-# TODO : python script for saliency maps
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(
@@ -144,7 +135,11 @@ def main(argv):
             main_log(train_history, valid_history)
 
     if args.test:
-        tester = BaseTester(args)
+        if args.model == "SupCon":
+            args.model = "base"
+            tester = RegressionTester(args)
+        else:
+            tester = BaseTester(args)
         tester.run()
 
 
