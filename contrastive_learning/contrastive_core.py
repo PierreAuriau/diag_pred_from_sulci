@@ -1,9 +1,17 @@
+# -*- coding: utf-8 -*-
+"""
+Core classes for contrastive learning.
+"""
+
 from tqdm import tqdm
 import numpy as np
+import logging
 import torch
 from torch.cuda.amp import GradScaler, autocast
+
 from dl_training.core import Base
 
+logger = logging.getLogger()
 
 class ContrastiveBase(Base):
     def get_output_pairs(self, inputs):
@@ -24,13 +32,13 @@ class ContrastiveBase(Base):
                     values[name] = 0
                 values[name] += float(metric(logits, target)) / nb_batch
 
-    def train(self, loader, fold=None, epoch=None, **kwargs):
+    def train(self, loader, run=None, epoch=None, **kwargs):
         """ Train the model on the dataloader provided
         Parameters
         ----------
         loader: a pytorch Dataloader
-        epoch : number of epoch
-        fold : number of fold
+        epoch : number of the epoch
+        run : number of the run
 
         Returns
         -------
@@ -42,7 +50,7 @@ class ContrastiveBase(Base):
         scaler = kwargs.get("gradscaler")
         self.model.train()
         nb_batch = len(loader)
-        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({fold},{epoch})")
+        pbar = tqdm(total=nb_batch, desc=f"Mini-Batch ({run},{epoch})")
 
         values = {}
         losses = []
@@ -114,7 +122,7 @@ class ContrastiveBase(Base):
         loss = 0
         values = {}
         visuals = []
-        y, y_true, X = [], [], []
+        y, y_true = [], []
 
         with torch.no_grad():
             for dataitem in loader:
@@ -155,6 +163,71 @@ class ContrastiveBase(Base):
             visuals = np.concatenate(visuals, axis=0)
 
         if with_visuals:
-            return y, y_true, X, loss, values, visuals
+            return y, y_true, loss, values, visuals
 
-        return y, y_true, X, loss, values
+        return y, y_true, loss, values
+    
+    def get_embeddings(self, loader):
+        """ Get the outputs of the model.
+
+        Parameter
+        ---------
+        loader: a pytorch Dataset
+            the data loader.
+        Returns
+        -------
+        z: array-like
+            the embeddings
+        labels: array-like
+            the true data
+        """
+
+        self.model.eval()
+        nb_batch = len(loader)
+        pbar = tqdm(total=nb_batch, desc="Mini-Batch")
+
+        with torch.no_grad():
+            z, labels = [], []
+
+            for dataitem in loader:
+                pbar.update()
+                inputs = dataitem.inputs
+                if isinstance(inputs, torch.Tensor):
+                    inputs = inputs.to(self.device)
+                for item in (dataitem.outputs, dataitem.labels):
+                    if item is not None:
+                        labels.extend(item.cpu().detach().numpy())
+                outputs = self.model(inputs)
+                z.extend(outputs.cpu().detach().numpy())
+            pbar.close()
+        return np.asarray(z), np.asarray(labels)
+    
+    def load_checkpoint(self, pretrained, only_encoder=True, strict=False):
+        checkpoint = None
+        try:
+            checkpoint = torch.load(pretrained, map_location=lambda storage, loc: storage)
+            logger.debug(f"Checkpoint Load : {pretrained}")
+        except BaseException as e:
+            logger.error('Impossible to load the checkpoint: %s' % str(e))
+        if checkpoint is not None:
+            if hasattr(checkpoint, "state_dict"):
+                self.model.load_state_dict(checkpoint.state_dict())
+                logger.debug(f"State Dict Loaded")
+            elif isinstance(checkpoint, dict):
+                if "model" in checkpoint:
+                    try:
+                        for key in list(checkpoint['model'].keys()):
+                            if key.replace('module.', '') != key:
+                                checkpoint['model'][key.replace('module.', '')] = checkpoint['model'][key]
+                                del(checkpoint['model'][key])
+                            if only_encoder:
+                                if not key.startswith("encoder"):
+                                    del(checkpoint['model'][key])
+                        unexpected = self.model.load_state_dict(checkpoint["model"], strict=strict)
+                        logger.info('Model loading info: {}'.format(unexpected))
+                        logger.info('Model loaded')
+                    except BaseException as e:
+                        logger.error('Error while loading the model\'s weights: %s' % str(e))
+                        raise ValueError("")
+            else:
+                self.model.load_state_dict(checkpoint)

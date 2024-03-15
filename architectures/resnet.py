@@ -82,10 +82,7 @@ class Bottleneck(nn.Module):
         out = self.bn2(out)
         out = self.relu(out)
 
-        if hasattr(self, "concrete_dropout"):
-            out = self.concrete_dropout(out)
-        else:
-            out = self.conv3(out)
+        out = self.conv3(out)
         out = self.bn3(out)
 
         if self.downsample is not None:
@@ -96,45 +93,19 @@ class Bottleneck(nn.Module):
 
         return out
 
-class Critic(nn.Module):
-    """
-        Critic used when performing contrastive_learning representation learning
-        (inspired from Tsai et al, Conditional Contrastive Learning with Kernel, ICLR 2022)
-    """
-    def __init__(self, latent_dim):
-        super(Critic, self).__init__()
-        self.projection_dim = 128
-        self.w1 = nn.Linear(latent_dim, latent_dim, bias=False)
-        self.bn1 = nn.BatchNorm1d(latent_dim)
-        self.relu = nn.ReLU()
-        self.w2 = nn.Linear(latent_dim, self.projection_dim, bias=False)
-        self.bn2 = nn.BatchNorm1d(self.projection_dim, affine=False)
-
-    def forward(self, x):
-        x = self.w1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.w2(x)
-        x = self.bn2(x)
-        return x
-
-
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, in_channels=3, num_classes=1000, zero_init_residual=False,
+    def __init__(self, block, layers, in_channels=1, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, dropout_rate=None, out_block=None, prediction_bias=True,
-                 initial_kernel_size=7):
+                 norm_layer=None, initial_kernel_size=7, n_embedding=512):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm3d
         self._norm_layer = norm_layer
 
         self.name = "resnet"
-        self.inputs = None
         self.inplanes = 64
         self.dilation = 1
-        self.out_block = out_block
 
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
@@ -147,7 +118,9 @@ class ResNet(nn.Module):
         self.base_width = width_per_group
         initial_stride = 2 if initial_kernel_size==7 else 1
         padding = (initial_kernel_size-initial_stride+1)//2
-        self.conv1 = nn.Conv3d(in_channels, self.inplanes, kernel_size=initial_kernel_size, stride=initial_stride,
+        self.conv1 = nn.Conv3d(in_channels, self.inplanes,
+                               kernel_size=initial_kernel_size,
+                               stride=initial_stride,
                                padding=padding, bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -163,17 +136,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(block, channels[3], layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool3d(1)
-        if dropout_rate is not None and dropout_rate>0:
-            self.dropout = nn.Dropout(dropout_rate)
-
-        # attention mechanism
-        self.attention_map = None
-        if out_block is None:
-            self.fc = nn.Linear(channels[-1] * block.expansion, num_classes, bias=prediction_bias)
-        elif out_block == "simCLR":
-            self.critic = Critic(channels[-1] * block.expansion)
-        else:
-            raise NotImplementedError()
+        self.embedding = nn.Linear(channels[3], n_embedding)
 
         for m in self.modules():
             if isinstance(m, nn.Conv3d):
@@ -196,10 +159,7 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def get_current_visuals(self):
-        return self.inputs
-
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, concrete_dropout=False):
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -214,37 +174,30 @@ class ResNet(nn.Module):
 
         layers = []
         layers.append(block(self.inplanes, planes, stride=stride, downsample=downsample, groups=self.groups,
-                            base_width=self.base_width, dilation=previous_dilation, norm_layer=norm_layer))  #, concrete_dropout=concrete_dropout))
+                            base_width=self.base_width, dilation=previous_dilation, norm_layer=norm_layer))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
             layers.append(block(self.inplanes, planes, groups=self.groups,
                                 base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer))#, concrete_dropout=concrete_dropout))
+                                norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        self.inputs = x.detach().cpu().numpy()
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        x1 = self.layer1(x)
-        x2 = self.layer2(x1)
-        x3 = self.layer3(x2)
-        x4 = self.layer4(x3)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
 
-        x5 = self.avgpool(x4)
-        x6 = torch.flatten(x5, 1)
-        if hasattr(self, 'dropout'):
-            x6  = self.dropout(x6)
-        elif self.out_block == "simCLR":
-            x6 = self.critic(x6)
-            return x6
-        else:
-            x6 = self.fc(x6).squeeze(dim=1)
-        return x6
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        features = self.embedding(x)
+        return features
 
 
 def _resnet(arch, block, layers, **kwargs):

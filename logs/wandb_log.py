@@ -21,7 +21,7 @@ def define_wandb_metrics(metrics):
 def main_log(train_history, valid_history):
     train_dict = train_history.to_dict()
     valid_dict = valid_history.to_dict()
-    nb_folds = len(train_dict["loss"])
+    nb_trainings = len(train_dict["loss"])
     nb_epochs = len(train_dict["loss"][0])
 
     metrics = {
@@ -38,28 +38,28 @@ def main_log(train_history, valid_history):
         "roc_auc": False
     }
 
-    log_metrics(metrics, nb_folds, nb_epochs, with_mean)
+    log_metrics(metrics, nb_trainings, nb_epochs, with_mean)
 
-    plots = plot_training_curves(metrics, nb_folds, nb_epochs, with_mean)
+    plots = plot_training_curves(metrics, nb_trainings, nb_epochs, with_mean)
     wandb.log(plots)
 
     if "balanced_accuracy on validation set" in valid_dict.keys():
         metrics["balanced_accuracy"] = valid_dict['balanced_accuracy on validation set']
-    update_summary(metrics, nb_folds)
+    update_summary(metrics, nb_trainings)
 
 
-def plot_training_curves(metrics, nb_folds, nb_epochs, with_mean=None):
+def plot_training_curves(metrics, nb_trainings, nb_epochs, with_mean=None):
     if with_mean is None:
         with_mean = {k: False for k in metrics.keys()}
     # Colors of the curves
-    colors = [px.colors.qualitative.Plotly[f] for f in range(nb_folds)]
+    colors = [px.colors.qualitative.Plotly[f] for f in range(nb_trainings)]
 
     # Plots
     plots = {}
     x = [e for e in range(nb_epochs)]
     for k, v in metrics.items():
         plots[k] = go.Figure()
-        for f in range(nb_folds):
+        for f in range(nb_trainings):
             plots[k].add_trace(go.Scatter(
                 x=x, y=v[f],
                 line_color=colors[f],
@@ -94,22 +94,22 @@ def plot_training_curves(metrics, nb_folds, nb_epochs, with_mean=None):
     return plots
 
 
-def log_metrics(metrics, nb_folds, nb_epochs, with_mean=None):
+def log_metrics(metrics, nb_trainings, nb_epochs, with_mean=None):
 
     if with_mean is None:
         with_mean = {k: False for k in metrics.keys()}
     for epoch in range(nb_epochs):
         metric_logs = {"epoch": epoch}
         for k, v in metrics.items():
-            for fold in range(nb_folds):
-                metric_logs[f"{k}/fold{fold}"] = v[fold][epoch]
+            for training in range(nb_trainings):
+                metric_logs[f"{k}/training{training}"] = v[training][epoch]
             if with_mean[k]:
-                metric_logs[f"{k}/mean"] = np.mean([v[f][epoch] for f in range(nb_folds)])
+                metric_logs[f"{k}/mean"] = np.mean([v[f][epoch] for f in range(nb_trainings)])
         wandb.log(metric_logs)
 
 
-def update_summary(metrics, nb_folds, num_epoch=-1):
+def update_summary(metrics, nb_trainings, num_epoch=-1):
 
     for k, v in metrics.items():
-        wandb.run.summary[f"{k}/mean"] = np.mean([v[f][num_epoch] for f in range(nb_folds)])
-        wandb.run.summary[f"{k}/std"] = np.std([v[f][num_epoch] for f in range(nb_folds)])
+        wandb.run.summary[f"{k}/mean"] = np.mean([v[f][num_epoch] for f in range(nb_trainings)])
+        wandb.run.summary[f"{k}/std"] = np.std([v[f][num_epoch] for f in range(nb_trainings)])
