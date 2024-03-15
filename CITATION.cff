@@ -23,7 +23,7 @@ preferred-citation:
     given-names: "Jean-François"
   - family-names: "Duchesnay"
     given-names: "Edouard"
-  booktitle: "21th IEEE International Symposium of Biological Imaging (ISBI)"
-  organisation: "IEEE"
+  conference: "21th IEEE International Symposium of Biological Imaging (ISBI)"
+  publisher: "IEEE"
   title: "Supervised diagnosis prediction from cortical sulci: toward the discovery of neurodevelopmental biomarkers in mental disorders."
   year: 2024
