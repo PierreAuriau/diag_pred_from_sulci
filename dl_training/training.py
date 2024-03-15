@@ -9,7 +9,7 @@ from collections import OrderedDict
 
 from dl_training.core import Base
 from contrastive_learning.contrastive_core import ContrastiveBase
-from datasets.datamanager import ClinicalDataManager
+from data.datamanager import ClinicalDataManager
 from dl_training.losses import SupConLoss
 from architectures.alexnet import alexnet
 from architectures.resnet import resnet18

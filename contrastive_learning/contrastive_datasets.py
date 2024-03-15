@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from datasets.clinical_multisites import SCZDataset, ASDDataset, BDDataset
+from data.datasets import SCZDataset, ASDDataset, BDDataset
 
 
 class ContrastiveSCZDataset(SCZDataset):
