@@ -3,7 +3,6 @@
 import logging
 import os
 import numpy as np
-
 import torch
 import torch.nn as nn
 from collections import OrderedDict
@@ -144,4 +143,3 @@ class BaseTrainer:
     
     def __str__(self):
         return "BaseTrainer"
-

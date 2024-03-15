@@ -1,5 +1,6 @@
 import os
 import pickle
+import numpy as np
 import argparse
 import sys
 import logging
@@ -7,7 +8,6 @@ from collections import OrderedDict
 
 import torch.nn as nn
 
-import numpy as np
 from sklearn.linear_model import LogisticRegression
 
 from logs.utils import get_chk_name
@@ -102,7 +102,6 @@ class RegressionTester(BaseTester):
                 
                 with open(os.path.join(self.args.checkpoint_dir, exp_name), 'wb') as f:
                     pickle.dump(predictions, f)
-                    logger.info("Pickle saved")
 
 
 def main(argv):
@@ -125,7 +124,6 @@ def main(argv):
     parser.add_argument("-b", "--batch_size", type=int, required=True)
     parser.add_argument("--nb_epochs", type=int, default=300)
 
-    parser.add_argument("--save_coef", action="store_true", help="Save coefficients of the logistic regression.")
     parser.add_argument("--num_cpu_workers", type=int, default=3,
                         help="Number of workers assigned to do the preprocessing step "
                              "(used by DataLoader of Pytorch)")

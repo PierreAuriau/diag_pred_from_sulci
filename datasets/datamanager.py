@@ -129,4 +129,3 @@ class ClinicalDataManager(object):
 
     def __str__(self):
         return "ClinicalDataManager"
-
