@@ -9,7 +9,7 @@ from typing import Callable, List, Type, Sequence, Dict
 
 from torch.utils.data import DataLoader, SequentialSampler, RandomSampler
 
-from datasets.clinical_multisites import SCZDataset, BDDataset, ASDDataset
+from data.datasets import SCZDataset, BDDataset, ASDDataset
 from contrastive_learning.contrastive_datasets import ContrastiveSCZDataset, \
     ContrastiveBDDataset, ContrastiveASDDataset
 from img_processing.da_module import DAModule
