@@ -7,6 +7,7 @@ is loaded.
 # Imports
 import numpy as np
 from skimage import transform as sk_tf
+from scipy.ndimage import convolve
 
 
 class Normalize(object):
@@ -111,75 +112,26 @@ class Padding(object):
         """
         orig_shape = arr.shape
         padding = []
-        for orig_i, final_i in zip(orig_shape, self.shape):
+        cnt = len(orig_shape) - len(self.shape)
+        for _ in range(cnt):
+            padding.append([0, 0])
+        for orig_i, final_i in zip(orig_shape[cnt:], self.shape):
             shape_i = final_i - orig_i
             half_shape_i = shape_i // 2
             if shape_i % 2 == 0:
                 padding.append([half_shape_i, half_shape_i])
             else:
                 padding.append([half_shape_i, half_shape_i + 1])
-        for cnt in range(len(arr.shape) - len(padding)):
-            padding.append([0, 0])
         fill_arr = np.pad(arr, padding, **self.kwargs)
         return fill_arr
 
     def __str__(self):
         return f"Padding(shape={self.shape})"
 
-class Downsample(object):
-    """ A class to downsample an array.
-    """
-
-    def __init__(self, scale, with_channels=True):
-        """ Initialize the instance.
-
-        Parameters
-        ----------
-        scale: int
-            the downsampling scale factor in all directions.
-        with_channels: bool, default True
-            if set expect the array to contain the channels in first dimension.
-        """
-        self.scale = scale
-        self.with_channels = with_channels
-
-    def __call__(self, arr):
-        """ Downsample an array to fit the desired shape.
-
-        Parameters
-        ----------
-        arr: np.array
-            an input array
-
-        Returns
-        -------
-        down_arr: np.array
-            the downsampled array.
-        """
-        if self.with_channels:
-            data = []
-            for _arr in arr:
-                data.append(self._apply_downsample(_arr))
-            return np.asarray(data)
-        else:
-            return self._apply_downsample(arr)
-
-    def _apply_downsample(self, arr):
-        """ See Downsample.__call__().
-        """
-        slices = []
-        for cnt, orig_i in enumerate(arr.shape):
-            if cnt == 3:
-                break
-            slices.append(slice(0, orig_i, self.scale))
-        down_arr = arr[tuple(slices)]
-
-        return down_arr
-
 
 class Binarize(object):
 
-    def __init__(self, one_values=None, threshold=None, with_channels=True):
+    def __init__(self, one_values=None, threshold=None):
         """ Initialize the instance.
             Parameters
             ----------
@@ -187,16 +139,12 @@ class Binarize(object):
                 the value of the input to be set to 1 in the output
             threshold: float
                 threshold above which the values of the input will be set to 1 in the output
-            with_channels: bool, default False
-                if set expect the array to contain the channels in first dimension.
-                if set, one_values and threshold can be different for each channels
             """
         self.threshold = threshold
         self.one_values = one_values
         if self.one_values is None and self.threshold is None:
             self.threshold = 0
-        self.with_channels = with_channels
-
+        
     def __call__(self, arr):
         """ Binarize an array according to one values.
             Parameters
@@ -208,30 +156,54 @@ class Binarize(object):
             bin_arr: np.array
                 the binarize array.
        """
-        if self.with_channels:
-            data = []
-            for ch, _arr in enumerate(arr):
-                data.append(self._apply_binarize(_arr, self.one_values, self.threshold))
-            return np.asarray(data)
-        else:
-            return self._apply_binarize(arr, self.one_values, self.threshold)
-
-    @staticmethod
-    def _apply_binarize(arr, one_values, threshold):
-        """ See Binarize.__call__().
-        """
         bin_arr = np.zeros_like(arr)
-        if one_values is not None:
-            bin_arr[np.isin(arr, one_values)] = 1
-        if threshold is not None:
-            bin_arr[arr > threshold] = 1
+        if self.one_values is not None:
+            bin_arr[np.isin(arr, self.one_values)] = 1
+        if self.threshold is not None:
+            bin_arr[arr > self.threshold] = 1
         return bin_arr
 
     def __str__(self):
-        string = "Binarization :"
+        string = "Binarization("
         if self.threshold is not None:
-            string += f" threshold={self.threshold}"
+            string += f"threshold={self.threshold}"
         if self.one_values is not None:
             string += f" one values={self.one_values}"
+        string += ")"
         return string
 
+
+class GaussianSmoothing(object):
+
+    def __init__(self, sigma, size, axes):
+        """ Initialize the instance.
+            Parameters
+            ----------
+            size : the size of the Gaussian kernel
+            sigma :
+        """
+        self.size = size
+        self.radius = size // 2 + 1
+        self.sigma = sigma
+        self.axes = axes
+    
+    def make_gaussian_kernel(self, n_dim):
+        """ Create a gaussian kernel with size and sigma
+        """
+        half_size = self.size // 2
+        rng = np.arange(-half_size, half_size + 1, 1)
+        x, y, z = np.meshgrid(rng, rng, rng)
+        kernel = np.exp(-(x ** 2 + y ** 2 + z ** 2) / (2 * self.sigma ** 2))
+        if n_dim > kernel.ndim:
+            kernel = np.expand_dims(kernel, axis=[i for i in range(n_dim-kernel.ndim)])
+        return kernel.astype(np.float32)
+    
+    def __call__(self, arr):
+        """ Convolution of an array with a gaussian kernel
+        """
+        kernel = self.make_gaussian_kernel(arr.ndim)
+        gauss_arr = convolve(arr, kernel, mode='constant', cval=0.0, origin=0)
+        return gauss_arr
+    
+    def __str__(self):
+        return f"GaussianSmoothing(sigma={self.sigma}, size={self.size})"

@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+authors:
+- family-names: "Auriau"
+  given-names: "Pierre"
+- family-names: "Dufumier"
+  given-names: "Benoit"
+title: "Diagnosis prediction from cortical sulci"
+url: "https://github.com/PierreAuriau/diag_pred_from_sulci"
+preferred-citation:
+  type: conference-paper
+  authors:
+  - family-names: "Auriau"
+    given-names: "Pierre"
+  - family-names: "Dufumier"
+    given-names: "Benoit"
+  - family-names: "Louiset"
+    given-names: "Robin"
+  - family-names: "Chavas"
+    given-names: "Joël"
+  - family-names: "Gori"
+    given-names: "Pietro"
+  - family-names: "Mangin"
+    given-names: "Jean-François"
+  - family-names: "Duchesnay"
+    given-names: "Edouard"
+  conference: "21th IEEE International Symposium of Biological Imaging (ISBI)"
+  publisher: "IEEE"
+  title: "Supervised diagnosis prediction from cortical sulci: toward the discovery of neurodevelopmental biomarkers in mental disorders."
+  year: 2024

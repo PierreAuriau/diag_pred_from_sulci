@@ -1,5 +1,7 @@
-from transformations.transformer import Transformer
-from transformations.augmentations import Cutout, Rotation
+# -*- coding: utf-8 -*-
+
+from img_processing.transformer import Transformer
+from img_processing.augmentations import Cutout, Rotation
 
 
 class DAModule(object):

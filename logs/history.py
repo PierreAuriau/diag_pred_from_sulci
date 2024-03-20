@@ -2,8 +2,6 @@
 """
 Module that provides logging utilities.
 """
-
-
 # System import
 import os
 import logging
@@ -11,6 +9,7 @@ import collections
 import time
 import datetime
 import pickle
+import json
 
 # Third party import
 import numpy as np
@@ -64,7 +63,7 @@ class History(object):
         Parameters
         ----------
         step: int or uplet
-            The step name: we can use a tuple to log the fold, the epoch
+            The step name: we can use a tuple to log the training, the epoch
             or the step within the epoch.
         kwargs
             The metrics to be logged.
@@ -116,45 +115,52 @@ class History(object):
             - self.history[self.steps[0]]["__timestamp__"])
         return datetime.timedelta(seconds=seconds)
 
-    def save(self, outdir, fold, epoch):
-        outfile = os.path.join(
-            outdir, "{0}_{1}_epoch_{2}.pkl".format(self.name, fold, epoch))
-        with open(outfile, "wb") as open_file:
-            pickle.dump(self, open_file)
+    def save(self, outdir, exp_name, run, epoch, to_dict=False):
+        outfile = os.path.join(outdir, self.get_pck_name(exp_name, run, epoch))
+        if to_dict:
+            dict_to_save = self.to_dict()
+            with open(outfile, "wb") as open_file:
+                pickle.dump(dict_to_save, open_file)
+        else:
+            with open(outfile, "wb") as open_file:
+                pickle.dump(self, open_file)
 
     @classmethod
-    def load(cls, file_name, folds=None):
-        # folds: (int) if given, load all the files corresponding to the given folds and merge them
-        if folds is None:
+    def load(cls, file_name, runs=None):
+        # runs: (int, ) if given, load all the files corresponding to the given runs and merge them
+        if runs is None:
             with open(file_name, "rb") as open_file:
                 return pickle.load(open_file)
         else:
             histories = []
-            for k in np.sort(folds):
+            for k in np.sort(runs):
                 with open(file_name%k, 'rb') as open_file:
                     histories.append(pickle.load(open_file))
-            return cls.merge_histories(histories, folds=np.sort(folds))
+            return cls.merge_histories(histories, runs=np.sort(runs))
 
     @classmethod
-    def merge_histories(cls, histories, folds=None):
+    def merge_histories(cls, histories, runs=None):
         if len(histories) == 0: return None
         merged = cls(histories[0].name, verbose=histories[0].verbose)
         for k, h in enumerate(histories):
             for step in h.steps:
-                if folds is not None:
-                    if type(step) == tuple and step[0] != folds[k]:
+                if runs is not None:
+                    if type(step) == tuple and step[0] != runs[k]:
                         continue
                 merged.log(step, **h.history[step])
         return merged
 
     @classmethod
-    def load_from_dir(cls, outdir, name, fold, epoch):
-        return cls.load(os.path.join(outdir, "{0}_{1}_epoch_{2}.pkl".format(name, fold, epoch)))
+    def load_from_dir(cls, outdir, name, exp_name, run, epoch):
+        return cls.load(os.path.join(outdir, f"{name}_exp-{exp_name}_run-{run}_ep-{epoch}.pkl"))
+    
+    def get_pck_name(self, exp_name, run, epoch):
+        return f"{self.name}_exp-{exp_name}_run-{run}_ep-{epoch}.pkl"
 
     def get_best_epochs(self, metric, highest=True):
-        # Returns a list of n epochs (where n==nb of folds) where each epoch is the best for a given fold according
+        # Returns a list of n epochs (where n==nb of trainings) where each epoch is the best for a given training according
         # to a metric. If 'highest' is True, the highest score is the best.
-        # for each fold, get the best epoch according to the selected metric
+        # for each training, get the best epoch according to the selected metric
         M = self.to_dict(patterns_to_del=['validation_', ' on validation set'])
         assert metric in list(M.keys()), "Unknown metric %s"%metric
         best_epochs = np.argmax(M[metric], axis=1) if highest else np.argmin(M[metric], axis=1)
@@ -162,8 +168,8 @@ class History(object):
 
     def to_dict(self, patterns_to_del=None, drop_last=False):
         import re
-        # Returns a dictionary {k: M} where k is a metric and M is a matrix n x p where n==nb of folds, p==nb of epochs
-        # If one fold is incomplete and drop_last==True, drop it. Otherwise, it won't be matrices but lists of lists.
+        # Returns a dictionary {k: M} where k is a metric and M is a matrix n x p where n==nb of runs, p==nb of epochs
+        # If one training is incomplete and drop_last==True, drop it. Otherwise, it won't be matrices but lists of lists.
         # Optionally, <patterns_to_del> can be a list of regex pattern to delete from the metrics.
 
         if patterns_to_del is not None:
@@ -183,16 +189,16 @@ class History(object):
                     if isinstance(step, int):
                         this_dict[metric].append(val)
                     elif isinstance(step, tuple):
-                        fold = step[0]
-                        if len(this_dict[metric]) <= fold:
-                            this_dict[metric].extend([[] for _ in range(fold-len(this_dict[metric])+1)])
-                        this_dict[metric][fold].append(val)
+                        run = step[0]
+                        if len(this_dict[metric]) <= run:
+                            this_dict[metric].extend([[] for _ in range(run-len(this_dict[metric])+1)])
+                        this_dict[metric][run].append(val)
         # Checks the structure
-        length_per_fold = {m: np.array([len(f) for f in this_dict[m]]) for m in this_dict.keys()}
+        length_per_run = {m: np.array([len(f) for f in this_dict[m]]) for m in this_dict.keys()}
         if drop_last:
-            for m in length_per_fold:
-                if len(length_per_fold[m]) > 0:
-                    assert np.all(length_per_fold[m][:-1] == length_per_fold[m][0])
-                    if not np.all(length_per_fold[m] == length_per_fold[m][0]):
+            for m in length_per_run:
+                if len(length_per_run[m]) > 0:
+                    assert np.all(length_per_run[m][:-1] == length_per_run[m][0])
+                    if not np.all(length_per_run[m] == length_per_run[m][0]):
                         del this_dict[m][-1]
         return this_dict
