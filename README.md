@@ -1,8 +1,7 @@
 <div align="center">
 
-<span style="font-size:2.0em;">Supervised diagnosis prediction from cortical sulci</span>
-
-<span style="font-size:1.2em;">*toward the discovery of neurodevelopmental biomarkers in mental disorders*</span>
+## Supervised diagnosis prediction from cortical sulci
+*toward the discovery of neurodevelopmental biomarkers in mental disorders*
 
 </div>
 
