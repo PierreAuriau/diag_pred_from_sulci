@@ -1,17 +1,14 @@
 <div align="center">
-<font size="6">  
-    Supervised diagnosis prediction from cortical sulci
-</font>  
 
-<font size="5">  
-   toward the discoveryof neurodevelopmental biomarkers in mental disorders
-</font>  
+<span style="font-size:2.0em;">Supervised diagnosis prediction from cortical sulci</span>
+
+<span style="font-size:1.2em;">*toward the discovery of neurodevelopmental biomarkers in mental disorders*</span>
 
 </div>
 
 ## Introduction
 
-This repository contains the experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, accepted to 21th IEEE ISBI 2024.
+This repository contains the experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, presented at 21th IEEE ISBI 2024.
 
 The paper can be found [here](/https://hal.science/hal-04494994/document).
 
