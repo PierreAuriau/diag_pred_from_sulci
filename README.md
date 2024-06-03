@@ -1,6 +1,25 @@
-## Objectives
+<div align="center">
+<font size="6">  
+    Supervised diagnosis prediction from cortical sulci
+</font>  
 
-This script was used to run experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, accepted to 21th IEEE ISBI 2024.
+<font size="5">  
+   toward the discoveryof neurodevelopmental biomarkers in mental disorders
+</font>  
+
+</div>
+
+## Introduction
+
+This repository contains the experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, accepted to 21th IEEE ISBI 2024.
+
+The paper can be found [here](/https://hal.science/hal-04494994/document).
+
+<div align="center">
+<img src="sulci_importance.png" width="300">
+</div>
+
+> **Abstract:** *Recent advances in machine learning applied to structural magnetic resonance imaging (sMRI) may highlight abnormalities in brain anatomy associated with mental disorders. These disorders are multifactorial, resulting from a complex combination of neurodevelopmental and environmental factors. In particular, such factors are present in cortical sulci, whose shapes are determined very early in brain development and are a valuable proxy for capturing specifically the neurodevelopmental contribution of brain anatomy. This paper explores whether the shapes of cortical sulci can be used for diagnosis prediction using deep learning models. These models are applied to three mental disorders (autism spectrum disorder, bipolar disorder, and schizophrenia) in large multicentric datasets. We demonstrate that the neurodevelopmental underpinnings of these disorders can be captured with sMRI. Finally, we show the potential of visual explanations of models’ decisions in discovering biomarkers for mental disorders.*
 
 ## Running experiments
 
@@ -44,6 +63,16 @@ To run experiments, you need a `root` folder containing :
 3. Pre-processing selection : Gaussian smoothing pre-processing, see `img_preprocessing` folder
 4. XAI : an occlusion method have been applied to understand model decisions, see `saliency_map` folder
 
+## Citation
+If you find this work useful for your research, please cite our [paper](https://hal.science/hal-04494994):
+```
+@inproceedings{Auriau:2024,
+author={Pierre Auriau and Antoine Grigis and Benoit Dufumier and Robin Louiset and Joel Chavas and Pietro Gori and Jean-François Mangin and Edouard Duchesnay},
+title={Supervised diagnosis prediction from cortical sulci: toward the discovery of  neurodevelopmental biomarkers in mental disorders},
+booktitle={21st IEEE International Symposium on Biomedical Imaging (ISBI 2024)},
+year={2024}
+}
+```
 ## Useful links
 Link to the paper : <https://hal.science/hal-04494994>
 
