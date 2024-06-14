@@ -34,7 +34,7 @@ pip install -e .
 ### Datasets
 
 The 3 clinical datasets `SCZDataset`, `BDDataset` and `ASDDataset` are derived mostly from public cohorts excepted for 
-BIOBD, BSNIP1 and PRAGUE, that are private for clinical research. Here, the phenotyp information of each dataset :
+BIOBD, BSNIP1 and PRAGUE, that are private for clinical research. The three datasets are described below:
 
 **Dataset** | **# Subjects** | **Age** (avg±std) | **Sex (\%F)** | **# Sites** | **Studies**
 | :---:| :---: | :---: | :---: | :---: | :---: |
