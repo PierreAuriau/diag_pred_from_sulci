@@ -1,6 +1,14 @@
+# [Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders](https://hal.science/hal-04494994)
+
 ## Objectives
 
-This script was used to run experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, accepted to 21th IEEE ISBI 2024.
+The goal is to predict diagnosis from cortical sulcus images for three mental disorders :
+- Healthy Control (HC) vs Autism Spectrum Disorder (ASD)
+- Healty Control (HC) vs Bipolar Disorder (BD)
+- Healthy Control (HC) vs Schizophrenia (SCZ)
+
+
+This script was used to run experiments described in _Supervised diagnosis prediction from cortical sulci : toward the discovery of neurodevelopmental biomarkers in mental disorders_, accepted to 21th IEEE ISBI 2024
 
 ## Running experiments
 
@@ -24,7 +32,7 @@ python3 dl_training/main.py --help
 ### Datasets
 
 The 3 clinical datasets `SCZDataset`, `BDDataset` and `ASDDataset` are derived mostly from public cohorts excepted for 
-BIOBD, BSNIP1 and PRAGUE, that are private for clinical research. Here, the phenotyp information of each dataset :
+BIOBD, BSNIP1 and PRAGUE, that are private for clinical research. The three datasets are described below:
 
 **Dataset** | **# Subjects** | **Age** (avg±std) | **Sex (\%F)** | **# Sites** | **Studies**
 | :---:| :---: | :---: | :---: | :---: | :---: |
@@ -45,6 +53,7 @@ To run experiments, you need a `root` folder containing :
 4. XAI : an occlusion method have been applied to understand model decisions, see `saliency_map` folder
 
 ## Useful links
-Link to the paper : <https://hal.science/hal-04494994>
 
-First version of these scripts are at: <https://github.com/Duplums/SMLvsDL>
+* Link to the paper : <https://hal.science/hal-04494994>
+* First version of these scripts are at: <https://github.com/Duplums/SMLvsDL>
+* More info of Brainvisa, software to extract cortical sulci from MRI images, at : <https://brainvisa.info/web/>
