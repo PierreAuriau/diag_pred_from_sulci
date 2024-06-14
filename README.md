@@ -12,7 +12,11 @@ This repository contains the experiments described in _Supervised diagnosis pred
 The paper can be found [here](/https://hal.science/hal-04494994/document).
 
 <div align="center">
-<img src="abstract.png" width="300">    
+<picture>
+<source media=media="(prefers-color-scheme: light)" srcset="abstract.png">
+<source media=media="(prefers-color-scheme: dark)" srcset="asbtract_black.png">
+<img alt="Graphical Abstract" src="abstract.jpeg" width="300">  
+</picture>  
 </div>
 
 > **Abstract:** *Recent advances in machine learning applied to structural magnetic resonance imaging (sMRI) may highlight abnormalities in brain anatomy associated with mental disorders. These disorders are multifactorial, resulting from a complex combination of neurodevelopmental and environmental factors. In particular, such factors are present in cortical sulci, whose shapes are determined very early in brain development and are a valuable proxy for capturing specifically the neurodevelopmental contribution of brain anatomy. This paper explores whether the shapes of cortical sulci can be used for diagnosis prediction using deep learning models. These models are applied to three mental disorders (autism spectrum disorder, bipolar disorder, and schizophrenia) in large multicentric datasets. We demonstrate that the neurodevelopmental underpinnings of these disorders can be captured with sMRI. Finally, we show the potential of visual explanations of models’ decisions in discovering biomarkers for mental disorders.*
